@@ -538,6 +538,66 @@ pre.code .c{color:var(--dim)} pre.code .s{color:var(--amber)} pre.code .k{color:
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;transition:none!important}
 }
+
+/* ---- P1: collect, theme week, object feed, relay ---- */
+.cta2{margin-top:-6px;flex-wrap:wrap;align-items:center}
+.theme-chip{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 18px;border-radius:14px;border:1px solid color-mix(in srgb,var(--tc,#ffb454) 55%,transparent);background:color-mix(in srgb,var(--tc,#ffb454) 12%,rgba(16,13,23,.62));backdrop-filter:blur(10px);color:var(--ink);font-size:14px;font-weight:600;text-shadow:none;cursor:pointer;flex-wrap:wrap;text-align:left}
+.theme-chip i{width:9px;height:9px;border-radius:50%;background:var(--tc,#ffb454);box-shadow:0 0 12px var(--tc,#ffb454);flex:none}
+.theme-chip .th-k{color:var(--tc,#ffb454);font-size:12px;letter-spacing:.08em}
+.theme-chip .th-n{color:var(--mute);font-size:12px;font-weight:400}
+.theme-chip[aria-pressed="true"]{box-shadow:0 0 0 1px var(--tc,#ffb454),0 0 30px -4px var(--tc,#ffb454)}
+.th-meta{display:flex;gap:8px;flex-wrap:wrap}
+.th-arch{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.th-arch li{display:flex;flex-direction:column;gap:2px;padding:10px 12px;border-radius:10px;background:var(--panel-2)}
+.th-arch span{font-size:12px;color:var(--mute)}
+.pending{color:var(--neon)}
+.swatches{display:flex;flex-wrap:wrap;gap:8px}
+.swatches button{min-width:28px;height:28px;border-radius:999px;border:2px solid transparent;box-shadow:0 0 0 1px var(--line-2);padding:0 8px;font-size:11.5px;color:var(--ink);background:var(--panel-2)}
+.swatches button[aria-pressed="true"]{border-color:var(--ink)}
+.relay{margin-top:12px}
+.rl-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 12px;border-radius:12px;background:rgba(98,230,255,.07);border:1px solid rgba(98,230,255,.2)}
+.rl-bar>span{font-size:12.5px;color:var(--cyan)}
+.rl-bar>div{display:flex;gap:6px;flex-wrap:wrap}
+.rl-form{display:grid;gap:8px;padding:12px;border-radius:12px;background:rgba(98,230,255,.07);border:1px solid rgba(98,230,255,.28)}
+.rl-form label{font-size:12.5px;color:var(--cyan)}
+.rl-when{display:flex;gap:6px;flex-wrap:wrap}
+.rl-when button{border:1px solid var(--line-2);background:transparent;border-radius:999px;padding:3px 11px;font-size:12.5px;color:var(--ink)}
+.rl-when button[aria-pressed="true"]{border-color:var(--cyan);color:var(--cyan);background:rgba(98,230,255,.1)}
+.rl-act{display:flex;gap:8px}
+.rl-owner{display:grid;gap:6px;padding:10px 12px;border-radius:12px;background:rgba(255,90,168,.08);border:1px solid rgba(255,90,168,.28)}
+.rl-owner span{font-size:12.5px;color:var(--mute)}
+.of{position:fixed;inset:0;z-index:60;background:rgba(10,8,16,.94);backdrop-filter:blur(14px);overflow:auto;padding:calc(env(safe-area-inset-top,0px) + 24px) max(16px,env(safe-area-inset-right,0px)) 40px max(16px,env(safe-area-inset-left,0px))}
+.of[hidden]{display:none}
+.of-h{max-width:1180px;margin:0 auto 18px;display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.of-h h2{margin:6px 0 6px;font-family:var(--f-display);font-weight:400;font-size:clamp(28px,4vw,44px);letter-spacing:.03em}
+.of-h p{margin:0;color:var(--mute);max-width:40em;line-height:1.7;font-size:14px}
+.of-f{max-width:1180px;margin:0 auto 18px;display:flex;gap:8px;flex-wrap:wrap}
+.of-f button{border:1px solid var(--line-2);background:transparent;border-radius:999px;padding:6px 14px;font-size:13px;color:var(--ink)}
+.of-f button[aria-selected="true"]{border-color:var(--amber);color:var(--amber);background:rgba(255,180,84,.08)}
+.of-grid{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:16px}
+.oc{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.oc-cover{display:block;width:100%;aspect-ratio:384/232;height:auto}
+.oc-b{padding:12px 14px 14px;display:grid;gap:8px}
+.oc-t{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.oc-t b{font-size:15px}
+.oc-b p{margin:0;color:var(--mute);font-size:13px;line-height:1.55;min-height:2.6em}
+.oc-m{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--mute)}
+.oc-m i{width:8px;height:8px;border-radius:50%;background:var(--c,#ffb454);flex:none}
+.oc-a{display:flex;gap:6px;flex-wrap:wrap}
+.oc-say{display:flex;gap:6px}
+.oc-say[hidden]{display:none}
+.oc-say input{flex:1;min-width:0}
+.qp{position:fixed;inset:0;z-index:70;background:rgba(4,3,10,.7);display:grid;place-items:center;padding:16px}
+.qp[hidden]{display:none}
+.qp-box{width:min(980px,100%);height:min(680px,88vh);background:var(--panel);border:1px solid var(--line-2);border-radius:16px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 30px 90px -20px #000}
+.qp-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)}
+.qp-t{display:grid}
+.qp-t span{font-size:12px;color:var(--mute)}
+.qp-act{display:flex;gap:6px;align-items:center}
+.qp-body{flex:1;min-height:0;background:#0b0912}
+.qp-body iframe{width:100%;height:100%;border:0;background:#fff}
+body.of-open .home{pointer-events:none}
+@media (max-width:640px){.of-h{flex-direction:column-reverse}.theme-chip{width:100%}}
 </style>
 
 <canvas id="scene" tabindex="0" aria-label="可交互的 3D 房间"></canvas>
@@ -547,6 +607,7 @@ pre.code .c{color:var(--dim)} pre.code .s{color:var(--amber)} pre.code .k{color:
     <h1>给写代码的人<br><em>一间房</em></h1>
     <p class="lead">在地球上挑一个真实地址，把你写的网页作品搬进去。推开门就是你的房间，邻居们从世界各地来串门。</p>
     <div class="cta"><button type="button" class="btn primary lg" id="goMine">回到我的房间 · 302</button><button type="button" class="btn lg glass" id="pickAddr">在地球上选址入住</button></div>
+    <div class="cta cta2"><button type="button" class="theme-chip" id="themeBtn" aria-pressed="false" aria-label="本周主题周"><i></i><span class="th-k">本周主题</span><b class="th-t"></b><span class="th-n"></span></button><button type="button" class="btn lg glass" id="openObjFeed">逛物件流</button></div>
     <div class="hstats"><span><b id="hsCount">16</b>户已入住</span><span><b>11</b>个国家</span><span><b>2.6k</b>盏窗灯</span><span class="demo">演示数据</span></div>
     <p class="role-note" id="roleNote" hidden>你现在是参观者：可以逛地球、进房间看作品。入住和留言需要房主在分享菜单里把你设为“参与者”。</p>
   </div>

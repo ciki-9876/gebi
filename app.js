@@ -833,7 +833,7 @@ function buildFloorLamp(def) {
 function kioskCanvas(entry, cw = 384, ch = 232) {
   const c = mkCanvas(cw, ch), g = c.getContext('2d');
   const sc = cw / 384; g.scale(sc, sc); const w = 384, h = ch / sc;
-  const kc = KIND_COLOR[entry.kind] || KIND_COLOR.link;
+  const kc0 = KIND_COLOR[entry.kind] || KIND_COLOR.link, kc = /^#[0-9a-f]{6}$/i.test(entry.color || '') ? [entry.color, shadeHex(entry.color, -.4)] : kc0;
   const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, kc[0]); gr.addColorStop(1, kc[1]);
   g.fillStyle = gr; g.fillRect(0, 0, w, h);
   g.fillStyle = 'rgba(255,255,255,.08)'; for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(w * .82, h * .2, 30 + i * 26, 0, Math.PI * 2); g.fill(); }
@@ -846,7 +846,29 @@ function kioskCanvas(entry, cw = 384, ch = 232) {
   let host = entry.work ? '隔壁托管 · 单文件作品' : '还没绑定地址';
   if (!entry.work && validUrl(entry.url)) { try { host = new URL(entry.url).host; } catch (e) {} }
   g.fillText(host, 20, h - 22);
+  if (entry.from) {
+    const t = (entry.from.adapted ? '改编自 ' : '收藏自 ') + String(entry.from.by || '').slice(0, 12);
+    g.font = '500 13px ' + FONT.body; const tw = g.measureText(t).width + 22;
+    g.fillStyle = 'rgba(8,6,16,.55)'; rr(g, w - tw - 14, 18, tw, 26, 13); g.fill();
+    g.fillStyle = '#ffd9a0'; g.fillText(t, w - tw - 3, 36);
+  }
   return c;
+}
+function shadeHex(hex, k) { const c = new THREE.Color(hex); const t = k < 0 ? 0 : 1, a = Math.abs(k); c.r += (t - c.r) * a; c.g += (t - c.g) * a; c.b += (t - c.b) * a; return '#' + c.getHexString(); }
+function buildKeepsake(def) {
+  const g = new THREE.Group();
+  mesh(CY(.32, .36, .7, 24), M('#2a2236', .5, .2), 0, .35, 0, g);
+  mesh(CY(.37, .37, .04, 24), M('#c79a4a', .35, .7), 0, .72, 0, g);
+  mesh(CY(.3, .3, .012, 24), GLOW('#ffb454', 1.3), 0, .745, 0, g);
+  mesh(BG(.04, .34, .04), M('#2a2a30', .4, .6), 0, .9, -.02, g);
+  const head = new THREE.Group(); head.position.y = 1.2; head.rotation.x = -.2; g.add(head);
+  mesh(rboxGeo(.82, .54, .05, .03), M('#101016', .35, .3), 0, 0, 0, head);
+  const entry = def.entry || { kind: 'web', title: '收藏' };
+  const kc = kioskCanvas(entry), ktex = texOf(kc);
+  const sc = new THREE.Mesh(new THREE.PlaneGeometry(.74, .447), new THREE.MeshBasicMaterial({ map: ktex, color: new THREE.Color(1.05, 1.05, 1.05) }));
+  sc.position.z = .03; head.add(sc);
+  g.userData.screen = { canvas: kc, tex: ktex, restore() { const x = kc.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.drawImage(kioskCanvas(entry), 0, 0); ktex.needsUpdate = true; } };
+  return g;
 }
 function buildKiosk(def) {
   const g = new THREE.Group();
@@ -1057,6 +1079,7 @@ const ITEMS = {
   coffeeTable: { name: '小圆桌', w: 1.2, d: 1.2, build: buildCoffeeTable, catalog: true },
   plant: { name: '盆栽', w: .8, d: .8, build: buildPlant, catalog: true },
   floorLamp: { name: '落地灯', w: .8, d: .8, build: buildFloorLamp, catalog: true },
+  keepsake: { name: '收藏品', w: .9, d: .9, build: buildKeepsake },
   kiosk: { name: '展示屏', w: 1.5, d: .8, build: buildKiosk, catalog: true, entry: { kind: 'web', title: '新作品', desc: '', url: '' } },
   arcade: { name: '街机', w: 1, d: 1, build: buildArcade, catalog: true, entry: { kind: 'game2', title: '新游戏', desc: '', url: '' } },
   bookshelf: { name: '书架', w: 1.7, d: .7, build: buildBookshelf, catalog: true },
@@ -1840,8 +1863,9 @@ function updateGlobe(dt, T) {
   if (G.ambient) G.ambient.material.uniforms.time.value = T;
   for (const p of G.pins) {
     const f = (T * .55 + p.phase) % 1;
-    p.ring.scale.setScalar(1 + f * 2.6); p.ringMat.opacity = (1 - f) * .9;
-    p.head.material.opacity = .85 + Math.sin(T * 3 + p.phase * 9) * .15;
+    const k = p.dim ? .22 : 1;
+    p.ring.scale.setScalar(1 + f * (p.themed ? 4.2 : 2.6)); p.ringMat.opacity = (1 - f) * .9 * k;
+    p.head.material.opacity = (.85 + Math.sin(T * 3 + p.phase * 9) * .15) * k;
   }
   G.arcs.forEach(a => { a.mat.uniforms.time.value = T; });
   if (G.reticle.visible) { G.reticle.rotation.z += dt * .6; G.reticle.userData.inner.rotation.z -= dt * 2.4; }
@@ -1951,11 +1975,20 @@ function cleanEntry(e, prefix) {
   if (!e || typeof e !== 'object') return undefined;
   const kind = KIND_LABEL[e.kind] ? e.kind : 'web';
   const o = { kind, title: String(e.title || '').slice(0, 30), desc: String(e.desc || '').slice(0, 80), url: validUrl(e.url) ? String(e.url).trim().slice(0, 500) : '' };
-  if (typeof e.work === 'string' && WORK_RE.test(e.work) && (!prefix || e.work.startsWith(prefix))) { o.work = e.work; o.workBytes = +e.workBytes || 0; }
+  const fr = cleanFrom(e.from); if (fr) o.from = fr;
+  if (typeof e.work === 'string' && WORK_RE.test(e.work) && (!prefix || e.work.startsWith(prefix) || (fr && !fr.adapted))) { o.work = e.work; o.workBytes = +e.workBytes || 0; }
   if (e.open === 'tab') o.open = 'tab';
   if (e.size === 'wide' || e.size === 'tall') o.size = e.size;
   if (typeof e.color === 'string' && /^#[0-9a-f]{6}$/i.test(e.color)) o.color = e.color;
   if (e.downloads && typeof e.downloads === 'object') { const d = {}; PLATFORMS.forEach(p => { const it = e.downloads[p.k]; if (it && validUrl(it.url)) d[p.k] = { url: String(it.url).slice(0, 500), ver: String(it.ver || '').slice(0, 12) }; }); if (Object.keys(d).length) o.downloads = d; }
+  return o;
+}
+const KEY_RE = /^[A-Za-z0-9_\-.~:@+]{1,60}$/;
+function cleanFrom(f) {
+  if (!f || typeof f !== 'object' || typeof f.room !== 'string' || !KEY_RE.test(f.room)) return null;
+  const o = { room: f.room, by: String(f.by || '').slice(0, 20), title: String(f.title || '').slice(0, 30), at: +f.at || 0 };
+  if (f.adapted) o.adapted = true;
+  if (Array.isArray(f.chain)) o.chain = f.chain.slice(-4).map(c => ({ by: String((c && c.by) || '').slice(0, 20), title: String((c && c.title) || '').slice(0, 30) }));
   return o;
 }
 function cleanItems(items, prefix) {
@@ -1984,7 +2017,7 @@ function realResidents() {
   const out = [];
   CLOUD.rooms.forEach((d, uid) => {
     if (!d || typeof d.lat !== 'number' || typeof d.lon !== 'number') return;
-    out.push({ no: String(d.no || '000').replace(/\D/g, '').slice(0, 4) || '000', key: uid, real: true, handle: String(d.handle || '@住户').slice(0, 20), name: String(d.name || '新房间').slice(0, 16), city: String(d.city || '').slice(0, 16), lat: clamp(d.lat, -85, 85), lon: clamp(d.lon, -180, 180), tagline: '隔壁住户', tags: ['真实住户'], hue: (hash(uid) % 1000) / 1000 });
+    out.push({ no: String(d.no || '000').replace(/\D/g, '').slice(0, 4) || '000', key: uid, real: true, handle: String(d.handle || '@住户').slice(0, 20), name: String(d.name || '新房间').slice(0, 16), city: String(d.city || '').slice(0, 16), lat: clamp(d.lat, -85, 85), lon: clamp(d.lon, -180, 180), tagline: '隔壁住户', tags: ['真实住户'], hue: (hash(uid) % 1000) / 1000, tw: cleanTw(d.tw), twLog: cleanTwLog(d.twLog) });
   });
   return out;
 }
@@ -2003,7 +2036,7 @@ function syncRealResidents() {
   if (!G.ready) return;
   for (let i = G.pins.length - 1; i >= 0; i--) { const p = G.pins[i]; if ((p.r.real && p.r.key !== CLOUD.landing) || p.r.custom) { G.pinRoot.remove(p.g); G.pins.splice(i, 1); } }
   RESIDENTS.filter(r => r.real && r.key !== CLOUD.landing).forEach(r => addPin(r));
-  buildArcs(); buildGlobeLabels(); syncChrome();
+  buildArcs(); buildGlobeLabels(); applyThemeMap(); syncChrome();
 }
 function onSite() {
   const s = CLOUD.site, r = RESIDENTS.find(x => x.preset === 'mine');
@@ -2014,7 +2047,7 @@ function onSite() {
     Object.assign(ME, { lat: r.lat, lon: r.lon, city: r.city });
     if (moved && G.ready) { const p = pinOf('302'); if (p) { G.pinRoot.remove(p.g); G.pins.splice(G.pins.indexOf(p), 1); } addPin(r); buildArcs(); }
   }
-  if (G.ready) buildGlobeLabels();
+  if (G.ready) { buildGlobeLabels(); applyThemeMap(); }
   syncChrome();
 }
 function onRooms() { syncRealResidents(); }
@@ -2044,14 +2077,15 @@ function realArcPairs() {
 /* ---------- messages ---------- */
 function roomMessages(key) {
   const out = [];
-  CLOUD.msgs.forEach((d, uid) => { (Array.isArray(d && d.list) ? d.list : []).forEach(m => { if (m && m.room === key && typeof m.text === 'string' && m.id) out.push({ id: String(m.id), room: key, text: m.text.slice(0, 200), at: +m.at || 0, reply: m.reply && m.reply.to ? { to: String(m.reply.to), id: String(m.reply.id) } : null, author: uid }); }); });
+  CLOUD.msgs.forEach((d, uid) => { (Array.isArray(d && d.list) ? d.list : []).forEach(m => { if (m && m.room === key && typeof m.text === 'string' && m.id) out.push({ id: String(m.id), room: key, text: m.text.slice(0, 200), at: +m.at || 0, reply: m.reply && m.reply.to ? { to: String(m.reply.to), id: String(m.reply.id) } : null, author: uid, kind: m.kind === 'appt' ? 'appt' : '', when: String(m.when || '').slice(0, 30), nudge: +m.nudge || 0 }); }); });
   return out.sort((a, b) => a.at - b.at);
 }
-async function postMessage(key, text, reply) {
+async function postMessage(key, text, reply, extra) {
   if (!canPost()) { toast('你现在只能参观：留言需要房主把你设为“参与者”'); return false; }
   const uid = CLOUD.me.id, d = clone(CLOUD.msgs.get(uid) || {});
   const m = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), room: key, text: text.slice(0, 120), at: Date.now() };
   if (reply) m.reply = { to: reply.author, id: reply.id };
+  if (extra && extra.kind === 'appt') { m.kind = 'appt'; m.when = String(extra.when || '').slice(0, 30); }
   d.list = (Array.isArray(d.list) ? d.list : []).concat(m).slice(-120);
   d.rooms = [...new Set(d.list.map(x => x.room))];
   d.replyTo = [...new Set(d.list.filter(x => x.reply).map(x => x.reply.to))];
@@ -2065,7 +2099,7 @@ function threadHTML(key, opts = {}) {
   if (!tops.length) return `<p class="mute small" style="margin:0 0 12px">${opts.empty || '黑板还是空的，第一个写点什么吧。'}</p>`;
   return tops.slice().reverse().slice(0, opts.limit || 40).map(m => {
     const replies = all.filter(x => x.reply && x.reply.id === m.id);
-    return `<div class="gb-item" data-id="${esc(m.id)}">${esc(m.text)}<small><span>— ${esc(nameOfUid(m.author))}</span><span>${esc(ago(m.at))}</span></small>
+    return `<div class="gb-item" data-id="${esc(m.id)}">${m.kind === 'appt' ? `<span class="tag pink">预约 · ${esc(m.when || '时间待定')}</span> ` : ''}${esc(m.text)}<small><span>— ${esc(nameOfUid(m.author))}</span><span>${m.nudge && !replies.length ? `催过一次 · ` : ''}${esc(ago(m.at))}</span></small>
       ${replies.map(x => `<div class="gb-reply"><b>${esc(nameOfUid(x.author))}</b>：${esc(x.text)}<span>${esc(ago(x.at))}</span></div>`).join('')}
       ${owner && m.author !== CLOUD.me.id && canPost() ? `<form class="gb-rform" data-id="${esc(m.id)}" data-author="${esc(m.author)}"><input class="input" maxlength="120" placeholder="回复 ${esc(nameOfUid(m.author))}" aria-label="回复这条留言"><button class="btn sm" type="submit">回复</button></form>` : ''}</div>`;
   }).join('');
@@ -2099,22 +2133,32 @@ function roomVisitors(key) {
   return out.sort((a, b) => b.at - a.at);
 }
 function myUpdates() {
-  if (!CLOUD.ready) return { visits: [], msgs: [], replies: [], count: 0 };
+  if (!CLOUD.ready) return { visits: [], msgs: [], replies: [], nudges: [], curations: [], count: 0 };
   const key = myRoomKey(), since = CLOUD.lastSeen, me = CLOUD.me.id;
   const visits = key ? roomVisitors(key).filter(v => v.at > since && v.uid !== me) : [];
   const msgs = key ? roomMessages(key).filter(m => m.author !== me && m.at > since && !m.reply) : [];
   const replies = [];
   CLOUD.msgs.forEach((d, uid) => (Array.isArray(d && d.list) ? d.list : []).forEach(m => { if (m && m.reply && m.reply.to === me && uid !== me && (+m.at || 0) > since) replies.push({ id: m.id, room: String(m.room), text: String(m.text || '').slice(0, 200), at: +m.at || 0, author: uid }); }));
-  return { visits, msgs, replies, count: visits.length + msgs.length + replies.length };
+  const nudges = key ? roomMessages(key).filter(m => m.author !== me && m.nudge > since && !m.reply && !hasReply(key, m)) : [];
+  const curations = key ? curationsOf(key).filter(c => c.at > since) : [];
+  return { visits, msgs, replies, nudges, curations, count: visits.length + msgs.length + replies.length + nudges.length + curations.length };
+}
+function didText(did, bare) {
+  const seen = [], acts = [];
+  did.forEach(x => { const m = /^(收藏|改编|试玩) (.+)$/.exec(x); if (m) acts.push(`${m[1]}了「${m[2]}」`); else if (x === '留言') acts.push('留了言'); else if (x === '预约') acts.push('约了时间'); else seen.push(x); });
+  const t = [seen.length ? `看了「${seen.slice(0, 2).join('」「')}」` : '', ...acts.slice(0, 2)].filter(Boolean).join('，');
+  return bare ? t : ' ' + t;
 }
 function updatesSentence(u) {
   const parts = [];
   if (u.visits.length) {
     const v = u.visits[0], who = nameOfUid(v.uid);
-    parts.push(`${u.visits.length} 位邻居来过${v.did.length ? `，${who} 看了「${v.did.slice(0, 2).join('」「')}」` : ''}`);
+    parts.push(`${u.visits.length} 位邻居来过${v.did.length ? `，${who}${didText(v.did)}` : ''}`);
   }
   if (u.msgs.length) parts.push(`${u.msgs.length} 条新留言（${nameOfUid(u.msgs[u.msgs.length - 1].author)}：${u.msgs[u.msgs.length - 1].text.slice(0, 16)}${u.msgs[u.msgs.length - 1].text.length > 16 ? '…' : ''}）`);
   if (u.replies.length) parts.push(`${u.replies.length} 条回复你的消息`);
+  if (u.nudges && u.nudges.length) parts.push(`${u.nudges.length} 位访客在等你回复`);
+  if (u.curations && u.curations.length) { const a = u.curations.filter(c => c.adapted).length, c = u.curations.length - a; parts.push(`你的作品${c ? `被收藏了 ${c} 次` : ''}${c && a ? '，' : ''}${a ? `被改编了 ${a} 次` : ''}`); }
   return parts.length ? `自从你上次来过：${parts.join('，')}。` : '';
 }
 async function markSeen() {
@@ -2122,8 +2166,16 @@ async function markSeen() {
   CLOUD.lastSeen = Date.now(); syncChrome();
   try { await CLOUD.db.doc(`data/users/${CLOUD.me.id}/state`).set({ lastSeen: CLOUD.lastSeen }); } catch (e) {}
 }
-function roomTitleOfKey(k) { if (k === '302') return '302 零点电竞酒吧'; const d = CLOUD.rooms.get(k); return d ? `${String(d.no || '')} ${String(d.name || '')}`.trim() : '一间房'; }
-function residentOfKey(k) { return k === '302' ? RESIDENTS.find(r => r.preset === 'mine') : RESIDENTS.find(r => r.real && r.key === k); }
+function hasReply(key, m) { return roomMessages(key).some(x => x.reply && x.reply.id === m.id); }
+function pendingFor(key) { const me = CLOUD.me && CLOUD.me.id; return roomMessages(key).filter(m => !m.reply && m.author !== me && !hasReply(key, m)); }
+function curationsOf(key) {
+  const out = [], scan = (uid, items) => { if (uid === key || !Array.isArray(items)) return; items.forEach(i => { const f = i && i.entry && cleanFrom(i.entry.from); if (f && f.room === key) out.push({ uid, title: f.title, adapted: !!f.adapted, at: f.at, mine: String(i.entry.title || '').slice(0, 30) }); }); };
+  CLOUD.rooms.forEach((d, uid) => scan(uid, d && d.items));
+  if (CLOUD.site) scan('302', CLOUD.site.items);
+  return out.sort((a, b) => b.at - a.at);
+}
+function roomTitleOfKey(k) { if (k && k.startsWith('demo:')) { const r = RESIDENTS.find(x => x.no === k.slice(5)); return r ? `${r.no} ${residentInfo(r).name}` : '一间房'; } if (k === '302') return '302 零点电竞酒吧'; const d = CLOUD.rooms.get(k); return d ? `${String(d.no || '')} ${String(d.name || '')}`.trim() : '一间房'; }
+function residentOfKey(k) { if (k && k.startsWith('demo:')) return RESIDENTS.find(r => r.no === k.slice(5) && !r.real); return k === '302' ? RESIDENTS.find(r => r.preset === 'mine') : RESIDENTS.find(r => r.real && r.key === k); }
 
 /* ---------- inbox: visitors, new messages, replies to me ---------- */
 function openInbox() {
@@ -2137,13 +2189,14 @@ function renderInbox() {
   if (!S.panel || S.panel.kind !== 'inbox') return;
   const key = myRoomKey(), since = S.panel.seen, u = (() => { const s = CLOUD.lastSeen; CLOUD.lastSeen = since; const x = myUpdates(); CLOUD.lastSeen = s; return x; })();
   const visitors = key ? roomVisitors(key).filter(v => v.uid !== CLOUD.me.id).slice(0, 30) : [];
-  const sentence = updatesSentence(u);
+  const sentence = updatesSentence(u), curations = key ? curationsOf(key) : [];
   const replies = u.replies.slice().reverse().map(m => `<li class="ib-item"><div><b>${esc(nameOfUid(m.author))}</b> 在「${esc(roomTitleOfKey(m.room))}」回复了你</div><p>${esc(m.text)}</p><small>${esc(ago(m.at))}</small>${residentOfKey(m.room) ? `<button type="button" class="btn sm ghost" data-go="${esc(m.room)}">去看看</button>` : ''}</li>`).join('');
-  const vis = visitors.map(v => `<li class="ib-item${v.at > since ? ' new' : ''}"><div><b>${esc(nameOfUid(v.uid))}</b> 来过 ${v.n > 1 ? `${v.n} 次` : ''}</div>${v.did.length ? `<p>看了「${v.did.map(esc).join('」「')}」</p>` : '<p class="mute">在房间里逛了逛</p>'}<small>${esc(ago(v.at))}</small></li>`).join('');
+  const vis = visitors.map(v => `<li class="ib-item${v.at > since ? ' new' : ''}"><div><b>${esc(nameOfUid(v.uid))}</b> 来过 ${v.n > 1 ? `${v.n} 次` : ''}</div>${v.did.length ? `<p>${esc(didText(v.did, true))}</p>` : '<p class="mute">在房间里逛了逛</p>'}<small>${esc(ago(v.at))}</small></li>`).join('');
   setPanel('我的动态', key ? '访客簿' : '回复与动态', `
     <div class="bit-say"><div class="bit-face sm" id="ibFace"></div><p>${esc(sentence || (key ? '这段时间没有新动静。把房间分享出去，邻居们就会来串门。' : '你还没有房间。在地球上选个地址入住，邻居们才找得到你。'))}</p></div>
     ${replies ? `<p class="section-t">回复你的消息</p><ul class="ib-list">${replies}</ul><div class="divider"></div>` : ''}
-    ${key ? `<p class="section-t">黑板上的留言</p><div class="gb-list" id="ibThread">${threadHTML(key, { empty: '还没有人留言。', limit: 20 })}</div><div class="divider"></div>
+    ${key && curations.length ? `<p class="section-t">被收藏与改编 · ${curations.length}</p><ul class="ib-list">${curations.slice(0, 12).map(c => `<li class="ib-item${c.at > since ? ' new' : ''}"><div><b>${esc(nameOfUid(c.uid))}</b> ${c.adapted ? '改编了' : '收藏了'}「${esc(c.title)}」</div>${c.adapted ? `<p>改编后的名字：${esc(c.mine)}</p>` : ''}<small>${esc(ago(c.at))}</small>${residentOfKey(c.uid) ? `<button type="button" class="btn sm ghost" data-go="${esc(c.uid)}">去 TA 的房间</button>` : ''}</li>`).join('')}</ul><div class="divider"></div>` : ''}
+    ${key ? `<p class="section-t">黑板上的留言${key && pendingFor(key).length ? ` · <span class="pending">${pendingFor(key).length} 条等你回复</span>` : ''}</p><div class="gb-list" id="ibThread">${threadHTML(key, { empty: '还没有人留言。', limit: 20 })}</div><div class="divider"></div>
     <p class="section-t">最近来过的人 · ${visitors.length} 位</p>${vis ? `<ul class="ib-list">${vis}</ul>` : '<p class="mute small" style="margin:0">还没有访客。</p>'}
     <p class="mute small" style="margin:12px 0 0">访客记录对房间的主人可见，也会作为邻居连线出现在地球上。</p>` : ''}`,
     key ? `<button type="button" class="btn primary" id="ibGo">${S.view === 'room' && roomKey(S.room) === key ? '留在房间里' : '回到我的房间'}</button>` : `<button type="button" class="btn primary" id="ibPick">选址入住</button>`);
@@ -2659,10 +2712,14 @@ function entryFooter(e, g) {
   const canBind = S.room && S.room.mine;
   let html = bound ? `<a class="btn ${e.open === 'tab' ? 'primary' : ''}" href="${esc(e.url)}" target="_blank" rel="noopener noreferrer">新标签页打开 ${ICON.ext}</a>` : '';
   if (!bound && canBind) html += `<button type="button" class="btn" data-act="bind">去绑定地址</button>`;
-  return html;
+  return html + curateHTML(e);
 }
 function bindFooter(g) {
   pFoot.querySelectorAll('[data-act="bind"]').forEach(b => b.addEventListener('click', () => { setMode('build'); setTimeout(() => selectItem(findGroup(g.userData.iid)), 60); }));
+  const e = entryOf(g);
+  pFoot.querySelectorAll('[data-act="collect"]').forEach(b => b.addEventListener('click', () => collectEntry(e)));
+  pFoot.querySelectorAll('[data-act="adapt"]').forEach(b => b.addEventListener('click', () => adaptEntry(e)));
+  pFoot.querySelectorAll('[data-act="author"]').forEach(b => b.addEventListener('click', () => goOrigin(e)));
 }
 function activate(g) {
   const e = entryOf(g); if (!e) return;
@@ -2693,7 +2750,9 @@ function agentRules() {
 - guestbook：后墙的黑板留言板。
 - vinyl：吧台上的唱片机，能放 lo-fi。
 - door：门，出去就回到地球，东京的 @pixelmo、柏林的 @byte、成都的 @leafcode 都是邻居。
-你可以调用工具操作访客看到的房间：focus_object 移动镜头指给访客看，open_entry 直接打开某个作品，set_mood 切换灯光，toggle_music 开关音乐，leave_message 把访客想对老板说的话贴到黑板上。访客想看什么就主动用工具带过去，然后用一句话介绍。你的职责是接待和转达，不要假装自己就是老板：涉及老板本人的问题，建议访客留言，老板会亲自回复。
+你的角色是“接待与转达”，不是陪聊：先用一两句话接住访客，带他看感兴趣的作品；只要访客提到想联系老板、合作、提问或见面，就主动用工具帮忙转达，而不是自己替老板回答。
+你可以调用工具：focus_object 移动镜头指路，open_entry 打开作品，set_mood 切换灯光，toggle_music 开关音乐，leave_message 把访客的原话贴到黑板，request_appointment 替访客向老板约一个时间，nudge_owner 提醒老板回复访客上一条还没回复的留言（6 小时内只能催一次），owner_pending 仅在对面是老板本人时查看还没回复的留言。
+你不替老板社交：不替老板回复，不替老板答应任何事，也不说老板“一定会”怎样。聊了三句还没落到具体事情上，就礼貌地问一句要不要帮他留言或约时间。
 回答规则：用中文，口语、俏皮但不油腻，每次 1 到 3 句、不超过 80 个字；只介绍房间里真实存在的东西，不编造作品、数据或链接；不清楚的就说会转告老板。`;
 }
 function agentTools() {
@@ -2703,7 +2762,10 @@ function agentTools() {
     { name: 'open_entry', description: '为访客打开一个作品入口：拾光、游戏机或留言黑板。拾光和游戏会以站内窗口运行作品原站，聊天面板会收起，访客点机器人可以回来。', inputSchema: { type: 'object', properties: { target: { type: 'string', enum: ['shiguang_note', 'game_console', 'guestbook'] } }, required: ['target'] }, execute: (i) => { const g = findGroup(TARGETS[String(i.target)]); if (!g) throw new Error('找不到这个入口'); setTimeout(() => activate(g), 500); return '已打开 ' + i.target; } },
     { name: 'set_mood', description: '切换房间灯光氛围：chill 是微醺暖光，party 是派对彩光，focus 是专注冷光。', inputSchema: { type: 'object', properties: { mood: { type: 'string', enum: ['chill', 'party', 'focus'] } }, required: ['mood'] }, execute: (i) => { setMood(String(i.mood)); return '灯光已切换为 ' + i.mood; } },
     { name: 'toggle_music', description: '打开或关闭吧台唱片机的 lo-fi 音乐。', inputSchema: { type: 'object', properties: { on: { type: 'boolean' } }, required: ['on'] }, execute: (i) => { const on = i.on === true || i.on === 'true'; if (on !== music.on) toggleMusic(); return on ? '音乐已打开' : '音乐已关闭'; } },
-    { name: 'leave_message', description: '访客明确要求给老板留言或转告老板时，把访客的原话贴到后墙黑板上。返回是否成功。不要替访客编写内容。', inputSchema: { type: 'object', properties: { text: { type: 'string', description: '访客要留给老板的原话，最多 120 字' } }, required: ['text'] }, execute: async (i) => { if (!CLOUD.ready) throw new Error('留言板现在离线，只能请访客点后墙的黑板留言'); if (iOwnRoom('302')) throw new Error('现在和你说话的就是老板本人'); const t = String(i.text || '').trim().slice(0, 120); if (!t) throw new Error('留言内容是空的'); const ok = await postMessage('302', t); if (!ok) throw new Error('访客目前只能参观，不能留言'); recordVisit('302', '留言'); return '已贴到黑板上，老板回复后访客会在“动态”里看到'; } }
+    { name: 'leave_message', description: '访客明确要求给老板留言或转告老板时，把访客的原话贴到后墙黑板上。返回是否成功。不要替访客编写内容。', inputSchema: { type: 'object', properties: { text: { type: 'string', description: '访客要留给老板的原话，最多 120 字' } }, required: ['text'] }, execute: async (i) => { if (!CLOUD.ready) throw new Error('留言板现在离线，只能请访客点后墙的黑板留言'); if (iOwnRoom('302')) throw new Error('现在和你说话的就是老板本人'); const t = String(i.text || '').trim().slice(0, 120); if (!t) throw new Error('留言内容是空的'); const ok = await postMessage('302', t); if (!ok) throw new Error('访客目前只能参观，不能留言'); recordVisit('302', '留言'); return '已贴到黑板上，老板回复后访客会在“动态”里看到'; } },
+    { name: 'request_appointment', description: '访客想约老板聊一聊时，替访客向老板预约。when 是访客说的时间，note 是事由原话。会在黑板上留一条带“预约”标记的留言。', inputSchema: { type: 'object', properties: { when: { type: 'string', description: '访客期望的时间，比如“今晚”“这周内”' }, note: { type: 'string', description: '事由，最多 100 字' } }, required: ['when', 'note'] }, execute: async (i) => { if (iOwnRoom(roomKey(S.room))) throw new Error('现在和你说话的就是老板本人'); const t = String(i.note || '').trim().slice(0, 100), w = String(i.when || '时间待定').trim().slice(0, 20); if (!t) throw new Error('事由是空的'); const ok = await relaySend('appt', t, w); if (!ok) throw new Error('访客目前只能参观，没法预约'); relayLog(`已替访客向老板预约「${w}」`); renderRelay(); return '已预约，老板回复后访客会在“动态”里看到'; } },
+    { name: 'nudge_owner', description: '提醒老板回复访客上一条还没回复的留言。6 小时内只能催一次。', inputSchema: { type: 'object', properties: {} }, execute: async () => { const r = await relayNudge(); if (r === 'ok') { relayLog('已提醒老板回复'); renderRelay(); return '已提醒老板'; } throw new Error({ cool: '刚催过了，过几个小时再说', none: '访客没有等回复的留言', readonly: '访客目前只能参观', offline: '离线演示里没法催', fail: '没催成功' }[r] || '催不了'); } },
+    { name: 'owner_pending', description: '仅当和你说话的是老板本人时，查看还没回复的访客留言。', inputSchema: { type: 'object', properties: {} }, execute: () => { const k = roomKey(S.room); if (!iOwnRoom(k)) throw new Error('只有老板本人可以看'); const l = pendingFor(k); return l.length ? l.slice(-6).map(m => `${nameOfUid(m.author)}：${m.text}${m.kind === 'appt' ? '（预约 ' + m.when + '）' : ''}${m.nudge ? '（催过）' : ''}`).join('；') : '没有等回复的留言'; } }
   ];
 }
 function agentFocus(target) {
@@ -2723,18 +2785,20 @@ function openAgent(g) {
   setPanel('AI 助手 · 房主配置', '酒保 Bit',
     `<div class="bit-head"><div class="bit-face" id="bitFace"></div><div><div class="bit-name">Bit · 零点酒吧当班</div><div class="bit-status ${live ? 'live' : ''}" id="bitStatus"><i></i><span>${live ? '由 Claude 驱动 · 能操作这个房间' : '离线演示 · 内置台词'}</span></div></div></div>
      <div class="chat" id="chatLog"></div>
+     <div class="relay" id="relay"></div>
      <div class="chips" id="chips">${['带我看看拾光', '你的游戏好玩吗？', '来点派对气氛', '放点音乐', '隔壁是什么地方？'].map(t => `<button type="button">${t}</button>`).join('')}</div>`,
     `<form class="composer" id="composer"><input class="input" id="chatInput" autocomplete="off" maxlength="200" placeholder="和 Bit 说点什么…"><button class="btn primary" id="chatSend" type="submit">发送</button></form>`);
   $('#bitFace').appendChild(faceCanvas);
   if (!S.chat.log.length) {
-    const k = roomKey(S.room), u = iOwnRoom(k) ? myUpdates() : null, sum = u && u.count ? updatesSentence(u) : '';
-    S.chat.log.push({ role: 'bit', text: sum ? `老板回来啦！${sum}要不要打开访客簿回复一下？` : iOwnRoom(k) ? '老板回来啦！这段时间店里很安静，把房间分享出去，客人就会来。' : '欢迎光临零点酒吧！我是 Bit。想看老板的作品，还是先来杯“零点特调”？想给老板留言的话，我帮你记到黑板上。' });
+    const k = roomKey(S.room), u = iOwnRoom(k) ? myUpdates() : null, sum = u && u.count ? updatesSentence(u) : '', pend = iOwnRoom(k) && CLOUD.ready ? pendingFor(k).length : 0;
+    S.chat.log.push({ role: 'bit', text: sum ? `老板回来啦！${sum}${pend ? `还有 ${pend} 条留言等你回复，` : ''}要不要打开访客簿回复一下？` : pend ? `老板回来啦！有 ${pend} 条留言还没回复，访客在等。` : iOwnRoom(k) ? '老板回来啦！这段时间店里很安静，把房间分享出去，客人就会来。' : '欢迎光临零点酒吧！我是 Bit，负责接待和转达：想看老板的作品我带你去，想对老板说什么、想约个时间，我帮你转达。' });
   }
   renderChat();
   $('#chips').addEventListener('click', e => { const b = e.target.closest('button'); if (b) agentSend(b.textContent); });
   $('#composer').addEventListener('submit', e => { e.preventDefault(); if (S.chat.busy) { if (S.chat.ctl) S.chat.ctl.abort(); return; } const i = $('#chatInput'); const v = i.value; i.value = ''; agentSend(v); });
   setBusy(S.chat.busy);
-  if (!isNarrow()) setTimeout(() => { const i = $('#chatInput'); if (i) i.focus({ preventScroll: true }); }, 380);
+  S.relayMode = null; renderRelay();
+  if (!isNarrow()) setTimeout(() => { const i = $('#chatInput'); if (i && !S.relayMode) i.focus({ preventScroll: true }); }, 380);
 }
 function renderChat() {
   const log = $('#chatLog'); if (!log) return;
@@ -2776,6 +2840,7 @@ async function agentSend(text) {
     await fallbackReply(text, reply);
   }
   reply.typing = false; updateMsg(reply); S.chat.ctl = null; setBusy(false);
+  if (!S.relayMode && !iOwnRoom(relayKey()) && S.chat.log.filter(m => m.role === 'user').length === 3 && !S.chat.log.some(m => m.role === 'act' && /已转达|已替访客/.test(m.text))) openRelay('msg');
   robotMood('happy'); setTimeout(() => { if (robotState.mood === 'happy') robotMood('idle'); }, 1600);
 }
 function scriptReply(t) {
@@ -2786,11 +2851,13 @@ function scriptReply(t) {
   if (has(/专注|安静|冷光|focus|写代码/i)) return { act: () => setMood('focus'), text: '切到专注模式，灯光调冷了，适合写代码。' };
   if (has(/微醺|暖|chill|放松/i)) return { act: () => setMood('chill'), text: '回到微醺暖光，这才是酒吧该有的样子。' };
   if (has(/音乐|歌|lo-?fi|唱片/i)) return { act: () => { if (!music.on) toggleMusic(); agentFocus('vinyl'); }, text: '唱片机转起来了，是老板挑的 lo-fi。再点一下唱片机就能停。' };
-  if (has(/留言|黑板|转告|告诉老板/)) return { act: () => { const g = findGroup('chalkboard'); if (g) setTimeout(() => activate(g), 600); }, text: '我帮你把黑板打开了，写下想对老板说的话，他回复后你会在“动态”里看到。' };
+  if (has(/预约|约个|约一下|见面|聊聊|合作|面谈/)) return { act: () => openRelay('appt'), text: '好，我帮你约老板。选个时间，写一句事由，我转达给他。' };
+  if (has(/催|回复了吗|怎么还没回/)) return { act: null, text: '想催老板的话，点下面的“提醒老板回复”，我帮你提醒一次。' };
+  if (has(/留言|黑板|转告|告诉老板/)) return { act: () => openRelay('msg'), text: '行，把你想说的话写在下面，我原话贴到黑板上，老板回复后你会在“动态”里看到。' };
   if (has(/隔壁|平台|社区|街区|邻居/)) return { act: null, text: '隔壁是一颗住满开发者的地球：每人在真实地址有一间房，家具就是作品入口。出门就能飞去东京找 @pixelmo。' };
   if (has(/特调|喝|酒|饮/)) return { act: null, text: '零点特调：一份荧光青柠，一份熬夜，再加一勺上线前的紧张。今晚算我请！' };
   if (has(/你是谁|介绍|hello|hi|你好|嗨/i)) return { act: null, text: '我是 Bit，老板配置的 AI 酒保。可以带你看拾光、玩游戏，或者帮你调灯光和音乐。' };
-  return { act: null, text: '这个问题我先记下，等老板回来转告他。现在可以问我：拾光、游戏、灯光、音乐，或者隔壁住着谁。' };
+  return { act: () => { if (!iOwnRoom(relayKey())) openRelay('msg'); }, text: '这个我替老板答不了。要是想问他，下面写一句话，我帮你转达。' };
 }
 async function fallbackReply(text, reply) {
   const r = scriptReply(text);
@@ -2901,7 +2968,7 @@ function openEntry(g) {
   setPanel(`${KIND_LABEL[e.kind] || '作品'} · ${nameOf(g)}`, e.title || '未命名作品', `
     <div class="preview" id="pv"></div>
     ${e.desc ? `<p style="margin:0 0 12px">${esc(e.desc)}</p>` : ''}
-    <dl class="kv"><dt>房主</dt><dd>${esc(S.room.owner)}</dd><dt>物件</dt><dd>${esc(nameOf(g))}</dd><dt>地址</dt><dd>${bound ? `<span style="font-family:var(--f-mono);font-size:12.5px">${esc(e.url)}</span>` : '<span class="mute">还没有绑定</span>'}</dd></dl>
+    <dl class="kv"><dt>房主</dt><dd>${esc(S.room.owner)}</dd>${e.from ? `<dt>${e.from.adapted ? '改编自' : '收藏自'}</dt><dd>${esc(e.from.by || '一位邻居')} 的「${esc(e.from.title)}」${(e.from.chain || []).length ? `<br><span class="mute small">更早：${e.from.chain.map(c => esc(c.by) + '「' + esc(c.title) + '」').join(' → ')}</span>` : ''}</dd>` : ''}<dt>物件</dt><dd>${esc(nameOf(g))}</dd><dt>地址</dt><dd>${bound ? `<span style="font-family:var(--f-mono);font-size:12.5px">${esc(e.url)}</span>` : '<span class="mute">还没有绑定</span>'}</dd></dl>
     ${bound ? '' : `<div class="unbound">这个物件还没绑定作品地址。${S.room.mine ? '在建造模式里选中它，填上地址，就能直接在房间里打开。' : '房主绑定后，这里会出现“打开完整版”。'}</div>`}
     ${hasDownloads(e) ? '<div class="divider"></div>' + downloadsHTML(e) : ''}`,
     entryFooter(e, g));
@@ -3065,11 +3132,12 @@ function createWin(g, e) {
   let host = '内置示例', origin = '*';
   if (src.external) { try { const u = new URL(src.src); host = u.host; origin = u.origin; } catch (x) {} }
   if (src.hosted) host = '隔壁托管' + (e.workBytes ? ' · ' + kb(e.workBytes) : '');
+  if (e.from) host += ` · ${e.from.adapted ? '改编自' : '收藏自'} ${e.from.by || '邻居'}`;
   const el = document.createElement('section');
   el.className = 'win ' + size; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', e.title || '作品');
   el.innerHTML = `<header class="win-bar"><i class="win-dot" style="background:linear-gradient(135deg,${kc[0]},${kc[1]})"></i>
     <div class="win-t"><b>${esc(e.title || '作品')}</b><span class="win-sub"><span class="win-host">${esc(host)}</span><span class="win-sdk">连接中</span></span></div>
-    <div class="win-act">${(hasDownloads(e) || (e.kind === 'shiguang' && S.room && S.room.mine)) ? '<button type="button" class="win-get" data-a="dl" aria-expanded="false">获取客户端</button>' : ''}
+    <div class="win-act">${curateOK(e) ? '<button type="button" class="win-get" data-a="collect">☆ 收藏</button><button type="button" class="win-get" data-a="adapt">改编</button>' : ''}${(hasDownloads(e) || (e.kind === 'shiguang' && S.room && S.room.mine)) ? '<button type="button" class="win-get" data-a="dl" aria-expanded="false">获取客户端</button>' : ''}
     <button type="button" class="wbtn" data-a="reload" aria-label="重新载入">${WICON.reload}</button>
     ${src.external ? `<a class="wbtn" href="${esc(src.src)}" target="_blank" rel="noopener noreferrer" aria-label="在新标签页打开">${ICON.ext}</a>` : ''}
     <button type="button" class="wbtn" data-a="min" aria-label="收起到任务栏">${WICON.min}</button>
@@ -3096,6 +3164,8 @@ function createWin(g, e) {
     else if (a === 'close') closeWin(w);
     else if (a === 'reload') { w.sdk = false; setSdk(w, '连接中', ''); body.querySelector('.win-hint').hidden = true; body.querySelector('.win-load').hidden = false; if (src.hosted) iframe.srcdoc = w.html || ''; else if (src.srcdoc) iframe.srcdoc = src.srcdoc; else iframe.src = src.src; }
     else if (a === 'dl') toggleDl(w, b);
+    else if (a === 'collect') collectEntry(e);
+    else if (a === 'adapt') adaptEntry(e);
     else if (a === 'tab') { /* plain link */ }
     else if (a === 'always-tab') { e.open = 'tab'; saveLayout(); closeWin(w); toast('以后点这个物件会在新标签页打开'); }
   });
@@ -3251,16 +3321,20 @@ function renderInspector(g) {
   const urlAllowed = !e || !['agent', 'guestbook', 'door', 'music'].includes(e.kind);
   const where = wall ? '墙面物件，挂点固定' : isChild ? `挂在「${(ITEMS[g.userData.parentDef.type] || {}).name || ''}」上，随它一起移动` : `位置 ${def.x.toFixed(2)}, ${def.z.toFixed(2)} · 朝向 ${((def.rot || 0) % 4 + 4) % 4 * 90}°`;
   const kindSel = e ? (e.kind) : '';
+  const kept = !!(e && e.from && !e.from.adapted);
+  const SW = ['', '#ff5a6e', '#ff9a3d', '#e8c030', '#34b88a', '#3d9be8', '#7c4dff', '#d43d86'];
   setPanel('建造 · 物件设置', nameOf(g), `
     <p class="mute small" style="margin:0 0 14px">${esc(where)}</p>
     ${movable ? `<div style="display:flex;gap:8px;margin-bottom:16px"><button type="button" class="btn" id="inRot">${ICON.rot}旋转 90°</button>${meta.nodelete ? '' : `<button type="button" class="btn danger" id="inDel">${ICON.del}删除</button>`}</div>` : ''}
     <div class="divider" style="margin-top:0"></div>
     <p class="section-t">绑定作品</p>
-    ${!e ? `<p class="mute small" style="margin:0 0 12px">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : `
+    ${!e ? `<p class="mute small" style="margin:0 0 12px">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : kept ? `<p class="small" style="margin:0 0 10px"><span class="tag">收藏品</span> 收藏自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」</p><p class="mute small" style="margin:0">作品属于原作者，这里只负责展示它：访客点开会链回 TA 的房间。想改成自己的版本，请去原房间点“改编一份”。不想留了，直接删除这件物件就行。</p>` : `
     <form id="inForm">
+      ${e.from ? `<p class="small" style="margin:0 0 12px"><span class="tag pink">改编</span> 改编自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」，署名会一直保留。</p>` : ''}
       ${builtin ? `<p class="small" style="margin:0 0 12px"><span class="tag ${e.kind === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[e.kind])}</span> <span class="mute">内置入口，打开方式由房间提供</span></p>` :
       `<div class="field"><label>作品类型</label><div class="seg" id="inKind">${BIND_KINDS.map(k => `<button type="button" data-k="${k}" aria-pressed="${k === kindSel}">${KIND_LABEL[k]}</button>`).join('')}</div></div>`}
       <div class="field"><label for="inTitle">作品名称</label><input class="input" id="inTitle" maxlength="20" value="${esc(e.title || '')}"></div>
+      ${builtin ? '' : `<div class="field"><label>外观 · 主题色</label><div class="swatches" id="inColor">${SW.map(c => `<button type="button" data-c="${c}" style="${c ? 'background:' + c : ''}" aria-pressed="${(e.color || '') === c}" aria-label="${c || '默认'}">${c ? '' : '默认'}</button>`).join('')}</div><span class="mute small">展示屏和街机会换成这个颜色，改编的作品可以先从换色开始。</span></div>`}
       ${urlAllowed ? `<div class="field"><label for="inUrl">作品地址</label><input class="input" id="inUrl" inputmode="url" placeholder="${DEMOS[e.kind] ? '留空则使用内置示例' : 'https://'}" value="${esc(e.url || '')}"><span class="err" id="inErr" hidden></span><span class="note-warn" id="inWarn">${esc(frameDenyHint(e.url))}</span></div>
       <div class="field"><label>或者上传作品文件，由隔壁托管</label>
         <div class="host-row"><label class="btn sm" for="inFile">选择 .html 文件</label><input type="file" id="inFile" accept=".html,.htm,text/html" hidden><button type="button" class="btn sm ghost" id="inPasteBtn">粘贴代码</button>${e.work ? '<button type="button" class="btn sm ghost danger" id="inUnhost">移除托管</button>' : ''}</div>
@@ -3272,13 +3346,15 @@ function renderInspector(g) {
       ${['shiguang', 'app', 'game', 'game2', 'web'].includes(e.kind) ? `<div class="divider"></div><p class="section-t">客户端下载（可选）</p><p class="mute small" style="margin:-4px 0 12px">访客打开作品时会看到适合自己设备的那一项。桌面安装包建议用 GitHub Releases 的 latest 固定链接，发新版不用改这里。</p>
       ${PLATFORMS.map(p => { const it = (e.downloads || {})[p.k] || {}; return `<div class="dl-edit"><label for="dl_${p.k}">${p.label}</label><input class="input" id="dl_${p.k}" inputmode="url" placeholder="${esc(p.ph)}" value="${esc(it.url || '')}"><input class="input" id="dlv_${p.k}" maxlength="12" placeholder="版本号" value="${esc(it.ver || '')}"></div>`; }).join('')}<span class="err" id="dlErr" hidden></span>` : ''}
     </form>`}`,
-    e ? `<button type="submit" form="inForm" class="btn primary">保存绑定</button>${!builtin && !isChild ? '<button type="button" class="btn ghost" id="inUnbind">解除绑定</button>' : ''}` : '');
+    e && !kept ? `<button type="submit" form="inForm" class="btn primary">保存绑定</button>${!builtin && !isChild ? '<button type="button" class="btn ghost" id="inUnbind">解除绑定</button>' : ''}` : '');
   const rot = $('#inRot'); if (rot) rot.addEventListener('click', () => rotateSelected());
   const del = $('#inDel'); if (del) del.addEventListener('click', () => deleteSelected());
   const mk = $('#inMake'); if (mk) mk.addEventListener('click', () => { def.entry = { kind: 'web', title: nameOf(g), desc: '', url: '' }; renderInspector(g); });
   const ub = $('#inUnbind'); if (ub) ub.addEventListener('click', () => { delete def.entry; saveLayout(); rebuildFor(g); toast('已解除绑定，它又变回装饰了'); });
   let kind = kindSel, openMode = e && e.open === 'tab' ? 'tab' : 'embed', winSize = e ? (e.size || (/game/.test(e.kind) ? 'wide' : 'tall')) : 'tall';
   const segPick = (id, cb) => { const el = $(id); if (el) el.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; el.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); cb(b.dataset.v); }); };
+  let colorPick = (e && e.color) || '';
+  const cw = $('#inColor'); if (cw) cw.addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; colorPick = b.dataset.c; cw.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
   segPick('#inOpen', v => { openMode = v; }); segPick('#inSize', v => { winSize = v; });
   const urlIn = $('#inUrl'); if (urlIn) urlIn.addEventListener('input', () => { $('#inWarn').textContent = frameDenyHint(urlIn.value); });
   let pendingHtml = null, unhost = false;
@@ -3315,6 +3391,7 @@ function renderInspector(g) {
       e.work = path; e.workBytes = new Blob([pendingHtml]).size; e.open = 'embed';
     } else if (unhost) { delete e.work; delete e.workBytes; }
     if (!builtin) { e.kind = kind || 'web'; const d = $('#inDesc'); if (d) e.desc = d.value.trim(); }
+    if (!builtin) { if (colorPick) e.color = colorPick; else delete e.color; }
     e.title = $('#inTitle').value.trim() || e.title || '未命名作品';
     if (u) e.url = u.value.trim();
     saveLayout(); rebuildFor(g); toast(CLOUD.ready ? '已保存到社区，切回漫游点它试试' : '已保存，切回漫游点它试试');
@@ -3441,10 +3518,11 @@ function syncChrome() {
     const mr = CLOUD.ready ? myResident() : RESIDENTS.find(r => r.preset === 'mine');
     $('#goMine').textContent = mr ? `回到我的房间 · ${mr.city} ${mr.no}` : `去 302 零点酒吧串门`;
     $('#roleNote').hidden = !(CLOUD.ready && !canPost());
+    syncThemeBtn();
   } else if (S.room) {
     const sky = S.dyn && S.dyn.sky;
     $('#plateNo').textContent = S.room.no; $('#plateName').textContent = S.room.name;
-    $('#plateSub').textContent = `${S.room.city || ''} · 房主 ${S.room.owner}${sky ? ` · 当地 ${sky.time}` : ''}`;
+    $('#plateSub').textContent = `${S.room.city || ''} · 房主 ${S.room.owner}${sky ? ` · 当地 ${sky.time}` : ''}${themeTag()}`;
     $('#stats').hidden = S.mode === 'build';
     const r = rng(hash(S.room.id)); const base = 60 + Math.floor(r() * 300), likes = 80 + Math.floor(r() * 400);
     const liked = !!S.liked[S.room.id];
@@ -3515,6 +3593,403 @@ $('#pickAddr').addEventListener('click', () => {
   toast('在地球上点任意一块陆地，就能在那里入住', 3600);
   G.pickHint = true;
 });
+
+
+/* ============================================================
+   P1 · 收藏与改编 / 主题周 / 物件流 / Bit 转达
+   ============================================================ */
+
+/* ---------- 收藏与改编 ---------- */
+const CURATE_NO = ['agent', 'guestbook', 'door', 'view', 'music'];
+function originHTML(e) { return e && e.from && residentOfKey(e.from.room) ? `<button type="button" class="btn ghost" data-act="author">去 ${esc(e.from.by || 'TA')} 的房间</button>` : ''; }
+function curateOK(e) { return !!(e && !CURATE_NO.includes(e.kind) && S.room && !S.room.mine && S.view === 'room'); }
+function curateHTML(e) {
+  let h = '';
+  if (curateOK(e)) h += '<button type="button" class="btn" data-act="collect">☆ 收藏到我的房间</button><button type="button" class="btn" data-act="adapt">改编一份</button>';
+  return h + originHTML(e);
+}
+function srcCtx() {
+  const r = S.room;
+  return { key: roomKey(r) || ('demo:' + r.no), by: String(r.owner === '你' ? '' : (r.owner || '')).slice(0, 20) || '邻居' };
+}
+function curateGate() {
+  if (CLOUD.ready) {
+    if (!canPost()) { toast('你现在只能参观：收藏需要房主把你设为“参与者”'); return false; }
+    if (!myRoomKey()) { toast('先在地球上选址入住，收藏的东西才有地方摆'); return false; }
+  }
+  return true;
+}
+function mkFrom(e, ctx, adapted) {
+  const chain = ((e.from && e.from.chain) || []).concat(e.from ? [{ by: e.from.by, title: e.from.title }] : []).slice(-4);
+  const f = { room: ctx.key, by: ctx.by, title: String(e.title || '').slice(0, 30), at: Date.now() };
+  if (adapted) f.adapted = true;
+  if (chain.length) f.chain = chain;
+  return f;
+}
+function freeSpot(items) {
+  const boxes = items.filter(i => !i.wall && i.type !== 'rug' && typeof i.x === 'number').map(i => { const m = ITEMS[i.type] || {}, odd = (i.rot || 0) % 2; return { x: i.x, z: i.z, hw: ((odd ? m.d : m.w) || 1) / 2, hd: ((odd ? m.w : m.d) || 1) / 2 }; });
+  for (let z = -3.3; z <= 2.5; z += .9) for (let x = -4.3; x <= 4.3; x += .9) {
+    if (!boxes.some(b => Math.abs(b.x - x) < b.hw + .6 && Math.abs(b.z - z) < b.hd + .6)) return { x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 };
+  }
+  return { x: 0, z: 0 };
+}
+function myWorkPrefix() { return CLOUD.ready ? (CLOUD.isOwner ? 'site/room302/works/' : `rooms/${CLOUD.me.id}/works/`) : 'local:'; }
+async function addToMyRoom(make, dup) {
+  if (S.room && S.room.mine && S.view === 'room') {
+    if (dup && S.room.items.some(dup)) return 'dup';
+    const def = make(S.room.items); S.room.items.push(def); placeItem(def); rebuildColliders(); refreshHotspots(); saveLayout(); return def;
+  }
+  if (CLOUD.ready) {
+    if (CLOUD.isOwner) {
+      const base = CLOUD.site && Array.isArray(CLOUD.site.items) && CLOUD.site.items.length ? CLOUD.site.items : ROOM_PRESETS.mine.items;
+      const items = cleanItems(base, 'site/room302/works/');
+      if (dup && items.some(dup)) return 'dup';
+      const def = make(items); items.push(def); await writeSite({ items }); return def;
+    }
+    const d = clone(CLOUD.rooms.get(CLOUD.me.id) || {}); if (!d.no) return null;
+    const items = cleanItems(d.items, `rooms/${CLOUD.me.id}/works/`);
+    if (dup && items.some(dup)) return 'dup';
+    const def = make(items); items.push(def); d.items = items; d.updatedAt = Date.now();
+    CLOUD.rooms.set(CLOUD.me.id, d); await cloudWrite(`rooms/${CLOUD.me.id}`, d); return def;
+  }
+  const items = loadRoom('mine').items;
+  if (dup && items.some(dup)) return 'dup';
+  const def = make(items); items.push(def); store.set('gebi3.room.mine', items); return def;
+}
+async function collectEntry(e, ctx0) {
+  if (!e || !curateGate()) return;
+  const ctx = ctx0 || srcCtx();
+  const copy = clone(e); copy.from = mkFrom(e, ctx, false);
+  const ent = cleanEntry(copy, null); if (!ent) return;
+  const r = await addToMyRoom(items => { const sp = freeSpot(items); return { uid: 'k' + Date.now().toString(36), type: 'keepsake', x: sp.x, z: sp.z, rot: 0, entry: ent }; },
+    i => i.type === 'keepsake' && i.entry && i.entry.from && i.entry.from.room === ctx.key && i.entry.title === ent.title);
+  if (r === 'dup') { toast('这件已经在你的房间里了'); return; }
+  if (!r) { toast('没放进去，稍后再试一次'); return; }
+  if (!ctx.key.startsWith('demo:')) recordVisit(ctx.key, '收藏 ' + String(ent.title).slice(0, 20));
+  toast(`已收藏「${ent.title}」：摆在你房间的展台上，署名 ${ctx.by}`, 3600);
+  if (OF.el && !OF.el.hidden) renderObjFeed();
+}
+async function adaptEntry(e, ctx0) {
+  if (!e || !curateGate()) return;
+  const ctx = ctx0 || srcCtx();
+  const type = ({ game2: 'arcade', game: 'arcade', repo: 'whiteboard' })[e.kind] || 'kiosk';
+  const copy = clone(e); copy.from = mkFrom(e, ctx, true);
+  if (copy.kind === 'shiguang') copy.kind = 'app';
+  if (e.work) {
+    const html = await loadWork(e.work);
+    if (html) {
+      const path = myWorkPrefix() + 'w' + Date.now().toString(36);
+      try { await saveWork(path, e.title || '作品', html); copy.work = path; copy.workBytes = new Blob([html]).size; } catch (x) { delete copy.work; delete copy.workBytes; }
+    } else { delete copy.work; delete copy.workBytes; }
+  }
+  const ent = cleanEntry(copy, myWorkPrefix()); if (!ent) return;
+  if (copy.work && copy.work.startsWith('local:')) { ent.work = copy.work; ent.workBytes = copy.workBytes; }
+  const r = await addToMyRoom(items => { const sp = freeSpot(items); return { uid: type + Date.now().toString(36), type, x: sp.x, z: sp.z, rot: 0, entry: ent }; });
+  if (!r) { toast('没放进去，稍后再试一次'); return; }
+  if (!ctx.key.startsWith('demo:')) recordVisit(ctx.key, '改编 ' + String(ent.title).slice(0, 20));
+  toast(`已把「${ent.title}」复制进你的房间：去装修模式里换色、改名、绑定你自己的地址。署名会一直保留`, 4800);
+  if (OF.el && !OF.el.hidden) renderObjFeed();
+}
+function goOrigin(e) {
+  const r = e && e.from && residentOfKey(e.from.room);
+  if (!r) { toast('原作者的房间暂时找不到'); return; }
+  closePanel(true); closeAllWins();
+  if (S.view === 'room') goRoomFromRoom(r); else diveInto(r);
+}
+
+/* ---------- 主题周 ---------- */
+const THEMES = [
+  { t: '理想中的深夜小店', b: '把你的房间布置成理想中的深夜小店：几点开门，卖什么，谁会在凌晨推门进来？作品就是小店的招牌商品。', c: '#ffb454' },
+  { t: '十平米的创作角落', b: '只给自己十平米：你会放下什么，留下什么？让作品从桌面一角长出来。', c: '#62e6ff' },
+  { t: '屋顶上的小游戏厅', b: '把房间改成一间只有三台机器的小游戏厅，每台机器一个你最想让人试玩的作品。', c: '#ff5aa8' },
+  { t: '下雨天的图书馆', b: '雨声、台灯、书架：布置一间适合慢慢读、慢慢写代码的房间。', c: '#9d8cff' },
+  { t: '给陌生人的一间客房', b: '假设明天有位陌生的开发者要来借住：你想让他先看到哪三样东西？', c: '#7ee0a1' }
+];
+const THEME_REF = new Date(2026, 9, 19);
+function themeFor(idx) { const n = THEMES.length, t = THEMES[((idx % n) + n) % n]; return { id: 'w' + idx, idx, title: t.t, brief: t.b, c: t.c }; }
+function curTheme() {
+  const now = new Date(), d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const th = themeFor(Math.round((d - THEME_REF) / (7 * 864e5)));
+  th.start = new Date(d); th.end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7);
+  th.left = Math.max(1, Math.ceil((th.end - now) / 864e5));
+  return th;
+}
+const TH = { cur: curTheme(), on: false, local: store.get('gebi.tw', []) };
+const DEMO_TW_NOW = ['204', '303', '101', '106', '108', '110', '202'], DEMO_TW_PAST = ['204', '101', '301', '202', '105'];
+function cleanTw(v) { return typeof v === 'string' && /^w-?\d{1,4}$/.test(v) ? v : ''; }
+function cleanTwLog(l) { return (Array.isArray(l) ? l : []).slice(-12).filter(x => x && cleanTw(x.id)).map(x => ({ id: x.id, t: String(x.t || '').slice(0, 24), at: +x.at || 0 })); }
+function twMerge(list, entry) { return cleanTwLog((list || []).filter(x => x.id !== entry.id).concat(entry)); }
+function themeLogOf(r) {
+  if (r.real) return r.twLog || [];
+  if (r.preset === 'mine') return cleanTwLog(CLOUD.ready ? (CLOUD.site && CLOUD.site.twLog) : TH.local);
+  if (r.custom || r.state === 'reno') return [];
+  const out = [], now = TH.cur, prev = themeFor(now.idx - 1);
+  if (DEMO_TW_NOW.includes(r.no)) out.push({ id: now.id, t: now.title });
+  if (DEMO_TW_PAST.includes(r.no)) out.push({ id: prev.id, t: prev.title });
+  return out;
+}
+function inTheme(r, id) { return themeLogOf(r).some(x => x.id === id); }
+function themeMembers(id) { return RESIDENTS.filter(r => inTheme(r, id)); }
+function myThemeResident() { return CLOUD.ready ? myResident() : RESIDENTS.find(r => r.preset === 'mine'); }
+function themeTag() { return S.resident && inTheme(S.resident, TH.cur.id) ? ' · 主题周' : ''; }
+function themeArchive() {
+  const m = new Map();
+  RESIDENTS.forEach(r => themeLogOf(r).forEach(x => { if (x.id === TH.cur.id) return; const e = m.get(x.id) || { id: x.id, t: x.t, rs: [] }; e.rs.push(r); m.set(x.id, e); }));
+  return [...m.values()].sort((a, b) => parseInt(b.id.slice(1)) - parseInt(a.id.slice(1)));
+}
+function applyThemeMap() {
+  if (!G.ready) return;
+  const col = new THREE.Color(TH.cur.c);
+  G.pins.forEach(p => {
+    if (!p.base) p.base = { head: p.head.material.color.clone(), scale: p.head.scale.x, beam: p.beamMat.uniforms.col.value.clone(), ring: p.ringMat.color.clone() };
+    const mem = TH.on && inTheme(p.r, TH.cur.id);
+    p.themed = mem; p.dim = TH.on && !mem;
+    p.head.material.color.copy(mem ? col.clone().multiplyScalar(3) : p.base.head);
+    p.head.scale.setScalar(mem ? .12 : p.dim ? p.base.scale * .7 : p.base.scale);
+    p.beamMat.uniforms.col.value.copy(mem ? col.clone().multiplyScalar(2.6) : p.dim ? p.base.beam.clone().multiplyScalar(.25) : p.base.beam);
+    p.ringMat.color.copy(mem ? col.clone().multiplyScalar(2) : p.dim ? p.base.ring.clone().multiplyScalar(.3) : p.base.ring);
+  });
+}
+function syncThemeBtn() {
+  const b = $('#themeBtn'); if (!b) return;
+  TH.cur = Object.assign(TH.cur, curTheme());
+  const n = themeMembers(TH.cur.id).length;
+  b.querySelector('.th-t').textContent = TH.cur.title;
+  b.querySelector('.th-n').textContent = `${n} 间亮灯 · 还剩 ${TH.cur.left} 天`;
+  b.style.setProperty('--tc', TH.cur.c);
+  b.setAttribute('aria-pressed', TH.on);
+}
+async function joinTheme() {
+  const th = TH.cur, entry = { id: th.id, t: th.title, at: Date.now() };
+  if (CLOUD.ready) {
+    if (!canPost()) { toast('你现在只能参观：参加主题周需要房主把你设为“参与者”'); return; }
+    if (CLOUD.isOwner) await writeSite({ tw: th.id, twLog: twMerge(CLOUD.site && CLOUD.site.twLog, entry) });
+    else {
+      const d = clone(CLOUD.rooms.get(CLOUD.me.id) || {});
+      if (!d.no) { toast('先在地球上选址入住，再来参加'); return; }
+      d.tw = th.id; d.twLog = twMerge(d.twLog, entry); d.updatedAt = Date.now();
+      CLOUD.rooms.set(CLOUD.me.id, d); await cloudWrite(`rooms/${CLOUD.me.id}`, d); syncRealResidents();
+    }
+  } else { TH.local = twMerge(TH.local, entry); store.set('gebi.tw', TH.local); }
+  toast(`你的房间已为「${th.title}」亮灯`, 3200);
+  applyThemeMap(); syncThemeBtn(); if (S.panel && S.panel.kind === 'theme') openThemePanel(true);
+}
+function openThemePanel(keep) {
+  const th = TH.cur = Object.assign(TH.cur, curTheme());
+  if (S.panel && !keep) closePanel(true);
+  S.panel = { kind: 'theme' }; G.shiftGoal = isNarrow() ? 0 : -200;
+  const mem = themeMembers(th.id), mr = myThemeResident(), joined = !!(mr && inTheme(mr, th.id));
+  const li = r => { const i = residentInfo(r); return `<li><button type="button" class="nb" data-no="${esc(r.no)}"><i style="--c:${residentColor(r)}"></i>${esc(i.mine && !i.custom ? '你的房间' : i.handle)}<span>${esc(i.city)} · ${esc(i.name || '')}</span></button></li>`; };
+  const arch = themeArchive();
+  setPanel(`主题周 · 第 ${th.idx + 1} 期`, th.title, `
+    <p style="margin:0 0 12px;line-height:1.7">${esc(th.brief)}</p>
+    <div class="th-meta"><span class="tag" style="background:${th.c}22;color:${th.c}">还剩 ${th.left} 天</span><span class="tag dim">周日 24:00 结束并归档</span></div>
+    <div class="divider"></div>
+    <p class="section-t">已亮灯的房间 · ${mem.length}</p>
+    ${mem.length ? `<ul class="nblist">${mem.map(li).join('')}</ul>` : '<p class="mute small" style="margin:0">还没有人参加，做第一个。</p>'}
+    <p class="mute small" style="margin:10px 0 0">亮灯的房间会在地球上变成主题色，其余的暗下去。其中一部分是演示数据。</p>
+    ${arch.length ? `<div class="divider"></div><p class="section-t">往期归档</p><ul class="th-arch">${arch.map(a => `<li><b>${esc(a.t)}</b><span>${a.rs.length} 间房 · ${a.rs.slice(0, 3).map(r => esc(residentInfo(r).handle)).join('、')}${a.rs.length > 3 ? ' 等' : ''}</span></li>`).join('')}</ul>` : ''}`,
+    `${joined ? `<button type="button" class="btn primary" id="thGo">去我的房间布置</button>` : `<button type="button" class="btn primary" id="thJoin">让我的房间亮灯参加</button>`}<button type="button" class="btn ghost" id="thOff">${TH.on ? '关闭主题地图' : '打开主题地图'}</button>`);
+  pBody.querySelectorAll('.nb').forEach(x => x.addEventListener('click', () => { const o = RESIDENTS.find(y => y.no === x.dataset.no); if (o) openResident(o); }));
+  const j = $('#thJoin'); if (j) j.addEventListener('click', joinTheme);
+  const go = $('#thGo'); if (go) go.addEventListener('click', () => { if (mr) diveInto(mr); });
+  $('#thOff').addEventListener('click', () => { TH.on = !TH.on; applyThemeMap(); syncThemeBtn(); openThemePanel(true); });
+}
+function toggleTheme() {
+  if (S.busy) return;
+  if (S.panel && S.panel.kind === 'theme' && TH.on) { TH.on = false; applyThemeMap(); syncThemeBtn(); closePanel(); return; }
+  TH.on = true; applyThemeMap(); syncThemeBtn(); openThemePanel();
+}
+
+/* ---------- 物件流 ---------- */
+const OF = { el: null, filter: 'all', open: false };
+const OF_FILTERS = [['all', '全部'], ['game', '小游戏'], ['tool', '工具'], ['web', '网页'], ['repo', '开源'], ['theme', '本周主题']];
+const OF_KIND = { game: ['game', 'game2'], tool: ['app', 'shiguang'], web: ['web', 'link'], repo: ['repo'] };
+function flatEntries(items) {
+  const out = [];
+  (items || []).forEach(i => {
+    if (i.entry && !CURATE_NO.includes(i.entry.kind)) out.push(i.entry);
+    if (i.children) Object.values(i.children).forEach(c => { if (c && c.entry && !CURATE_NO.includes(c.entry.kind)) out.push(c.entry); });
+  });
+  return out;
+}
+const R302_ENTRIES = [{ kind: 'shiguang', title: '拾光', desc: '房主做的待办与便签 App：网页版、Windows 桌面版和浏览器扩展' }, { kind: 'game', title: '霓虹贪吃蛇', desc: '房主自己写的网页小游戏，屏幕里一直在自动演示' }];
+function collectFeed() {
+  const out = [];
+  RESIDENTS.forEach(r => {
+    if (r.state === 'reno') return;
+    const info = residentInfo(r);
+    let list = [], key = keyOfResident(r) || (r.preset || r.custom ? null : null);
+    if (r.real) list = flatEntries(cleanItems((CLOUD.rooms.get(r.key) || {}).items, `rooms/${r.key}/works/`));
+    else if (r.preset === 'mine') {
+      const items = CLOUD.ready && CLOUD.site && Array.isArray(CLOUD.site.items) && CLOUD.site.items.length ? cleanItems(CLOUD.site.items, 'site/room302/works/') : ROOM_PRESETS.mine.items;
+      const own = flatEntries(items), titles = new Set(own.map(x => x.title));
+      list = R302_ENTRIES.filter(x => !own.some(o => o.kind === x.kind)).concat(own).filter((x, i, a) => a.findIndex(y => y.title === x.title) === i);
+    }
+    else if (r.preset) list = flatEntries(ROOM_PRESETS[r.preset].items);
+    else if (r.custom && CUSTOM[r.no]) list = flatEntries(CUSTOM[r.no].items);
+    else if (r.works) list = r.works.map(w => ({ kind: w[1], title: w[0], desc: r.tagline || '' }));
+    list.forEach(e => out.push({ r, key: key || ('demo:' + r.no), e, handle: info.mine && !info.custom ? '你' : info.handle, city: info.city, demo: !!info.demo, real: !!r.real || r.preset === 'mine', mine: !!info.mine, at: r.real ? ((CLOUD.rooms.get(r.key) || {}).updatedAt || 0) : 0, theme: inTheme(r, TH.cur.id) }));
+  });
+  return out.sort((a, b) => (b.at - a.at) || (hash(a.e.title + a.key) % 97) - (hash(b.e.title + b.key) % 97));
+}
+function ofPass(it) {
+  if (OF.filter === 'all') return true;
+  if (OF.filter === 'theme') return it.theme;
+  return (OF_KIND[OF.filter] || []).includes(it.e.kind);
+}
+function ensureObjFeed() {
+  if (OF.el) return;
+  const el = document.createElement('section'); el.className = 'of'; el.id = 'of'; el.hidden = true; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', '物件流');
+  el.innerHTML = `<header class="of-h"><div><div class="eyebrow">物件流</div><h2>十秒看懂的作品</h2><p>房间是目的地，物件流是街道。点“试玩”直接上手，喜欢就收藏进自己的房间，也可以当场给作者留一句话。</p></div><button type="button" class="icon-btn" id="ofClose" aria-label="关闭物件流"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8m0-8-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></header>
+    <div class="of-f" id="ofFilters" role="tablist"></div><div class="of-grid" id="ofGrid"></div>`;
+  document.body.appendChild(el); OF.el = el;
+  $('#ofClose').addEventListener('click', closeObjFeed);
+  $('#ofFilters').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; OF.filter = b.dataset.f; renderObjFeed(); });
+  $('#ofGrid').addEventListener('click', ev => {
+    const b = ev.target.closest('[data-a]'); if (!b) return;
+    const card = b.closest('.oc'), it = OF.items[+card.dataset.i]; if (!it) return;
+    const a = b.dataset.a;
+    if (a === 'play') openQuickPlay(it);
+    else if (a === 'go') { closeObjFeed(); if (!S.busy) diveInto(it.r); }
+    else if (a === 'collect') collectEntry(it.e, { key: it.key, by: it.handle === '你' ? '邻居' : it.handle });
+    else if (a === 'adapt') adaptEntry(it.e, { key: it.key, by: it.handle === '你' ? '邻居' : it.handle });
+    else if (a === 'say') { const f = card.querySelector('.oc-say'); f.hidden = !f.hidden; if (!f.hidden) f.querySelector('input').focus(); }
+  });
+  $('#ofGrid').addEventListener('submit', async ev => {
+    ev.preventDefault(); const f = ev.target.closest('.oc-say'), card = f.closest('.oc'), it = OF.items[+card.dataset.i];
+    const inp = f.querySelector('input'), t = inp.value.trim(); if (!t || !it) return;
+    inp.value = ''; if (await postMessage(it.key, t)) { recordVisit(it.key, '留言'); toast(`已留言给 ${it.handle}，TA 回复后你会在“动态”里看到`); f.hidden = true; }
+  });
+  document.addEventListener('keydown', ev => { if (ev.key === 'Escape') { if (QP.el && !QP.el.hidden) closeQuickPlay(); else if (OF.el && !OF.el.hidden) closeObjFeed(); } });
+}
+function renderObjFeed() {
+  const all = collectFeed(); OF.items = all.filter(ofPass);
+  $('#ofFilters').innerHTML = OF_FILTERS.map(([k, l]) => `<button type="button" data-f="${k}" role="tab" aria-selected="${OF.filter === k}">${l}${k === 'theme' ? ` · ${all.filter(x => x.theme).length}` : ''}</button>`).join('');
+  const grid = $('#ofGrid'); grid.innerHTML = '';
+  if (!OF.items.length) { grid.innerHTML = '<p class="mute" style="grid-column:1/-1;text-align:center;padding:48px 0">这个分类下暂时没有作品。</p>'; return; }
+  OF.items.forEach((it, i) => {
+    const card = document.createElement('article'); card.className = 'oc'; card.dataset.i = i;
+    const cv = kioskCanvas(it.e, 384, 232); cv.className = 'oc-cover'; cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', it.e.title || '作品'); card.appendChild(cv);
+    const canSay = CLOUD.ready && it.real && canPost() && !it.mine;
+    card.insertAdjacentHTML('beforeend', `<div class="oc-b"><div class="oc-t"><b>${esc(it.e.title || '未命名')}</b><span class="tag ${/game/.test(it.e.kind) ? 'pink' : ''}">${esc(KIND_LABEL[it.e.kind] || '作品')}</span></div>
+      <p>${esc(it.e.desc || '房主还没写介绍')}</p>
+      <div class="oc-m"><i style="--c:${residentColor(it.r)}"></i><span>${esc(it.handle)} · ${esc(it.city || '')}</span>${it.theme ? '<span class="tag" style="background:rgba(255,180,84,.14)">本周主题</span>' : ''}${it.e.from ? `<span class="tag pink">${it.e.from.adapted ? '改编' : '收藏'}自 ${esc(it.e.from.by || '邻居')}</span>` : ''}${it.demo ? '<span class="tag dim">演示</span>' : ''}</div>
+      <div class="oc-a"><button type="button" class="btn sm primary" data-a="play">试玩</button><button type="button" class="btn sm" data-a="go">进房间</button>${it.mine ? '' : '<button type="button" class="btn sm" data-a="collect">☆ 收藏</button><button type="button" class="btn sm ghost" data-a="adapt">改编</button>'}${canSay ? '<button type="button" class="btn sm ghost" data-a="say">说一句</button>' : ''}</div>
+      ${canSay ? '<form class="oc-say" hidden><input class="input" maxlength="120" placeholder="给作者留一句话，TA 会在动态里看到" aria-label="给作者留言"><button class="btn sm primary" type="submit">发送</button></form>' : ''}</div>`);
+    grid.appendChild(card);
+  });
+}
+function openObjFeed() {
+  ensureObjFeed(); if (S.busy) return;
+  closePanel(true); OF.el.hidden = false; OF.el.scrollTop = 0; document.body.classList.add('of-open');
+  renderObjFeed(); setTimeout(() => $('#ofClose').focus({ preventScroll: true }), 50);
+}
+function closeObjFeed() { if (!OF.el) return; closeQuickPlay(); OF.el.hidden = true; document.body.classList.remove('of-open'); }
+
+/* quick play: try a work without walking into the room */
+const QP = { el: null, it: null };
+function placeholderDoc(e) {
+  const kc = KIND_COLOR[e.kind] || KIND_COLOR.link;
+  return `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;height:100vh;display:grid;place-items:center;background:linear-gradient(135deg,${kc[0]},${kc[1]});color:#fff;font:600 22px system-ui;text-align:center;overflow:hidden;touch-action:none"><canvas id="c" style="position:fixed;inset:0"></canvas><div style="position:relative;pointer-events:none;padding:0 24px"><div>${esc(e.title || '作品')}</div><div style="font:400 13px system-ui;opacity:.85;margin-top:8px">演示房间里的占位作品 · 点画面放烟花</div></div><script>var c=document.getElementById('c'),x=c.getContext('2d'),P=[];function R(){c.width=innerWidth;c.height=innerHeight}R();onresize=R;onpointerdown=function(e){for(var i=0;i<26;i++){var a=Math.random()*6.283,s=1+Math.random()*4;P.push({x:e.clientX,y:e.clientY,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1})}};(function L(){x.clearRect(0,0,c.width,c.height);P=P.filter(function(p){return p.l>0});P.forEach(function(p){p.x+=p.vx;p.y+=p.vy;p.vy+=.06;p.l-=.014;x.fillStyle='rgba(255,255,255,'+p.l+')';x.beginPath();x.arc(p.x,p.y,3*p.l+1,0,6.283);x.fill()});requestAnimationFrame(L)})()<\/script>`;
+}
+function ensureQP() {
+  if (QP.el) return;
+  const el = document.createElement('section'); el.className = 'qp'; el.hidden = true; el.setAttribute('role', 'dialog');
+  el.innerHTML = `<div class="qp-box"><header class="qp-bar"><div class="qp-t"><b></b><span></span></div><div class="qp-act"><button type="button" class="win-get" data-q="collect">☆ 收藏</button><button type="button" class="win-get" data-q="go">进房间</button><a class="wbtn" data-q="tab" target="_blank" rel="noopener noreferrer" hidden aria-label="在新标签页打开">${ICON.ext}</a><button type="button" class="wbtn x" data-q="close" aria-label="关闭">${WICON.x}</button></div></header><div class="qp-body"></div></div>`;
+  document.body.appendChild(el); QP.el = el;
+  el.addEventListener('click', ev => {
+    if (ev.target === el) return closeQuickPlay();
+    const b = ev.target.closest('[data-q]'); if (!b || !QP.it) return; const it = QP.it;
+    if (b.dataset.q === 'close') closeQuickPlay();
+    else if (b.dataset.q === 'go') { closeQuickPlay(); closeObjFeed(); if (!S.busy) diveInto(it.r); }
+    else if (b.dataset.q === 'collect') collectEntry(it.e, { key: it.key, by: it.handle === '你' ? '邻居' : it.handle });
+  });
+}
+async function openQuickPlay(it) {
+  ensureQP(); const e = it.e; QP.it = it;
+  const src = embedSource(e) || { srcdoc: placeholderDoc(e), external: false, demo: true };
+  const body = QP.el.querySelector('.qp-body'); body.innerHTML = '';
+  QP.el.querySelector('.qp-t b').textContent = e.title || '作品';
+  QP.el.querySelector('.qp-t span').textContent = `${it.handle} · ${it.city || ''}${src.demo ? ' · 演示占位' : src.hosted ? ' · 隔壁托管' : ''}`;
+  const tab = QP.el.querySelector('[data-q="tab"]'); tab.hidden = !src.external; if (src.external) tab.href = src.src;
+  QP.el.querySelector('[data-q="collect"]').hidden = !!it.mine;
+  const f = document.createElement('iframe'); f.title = e.title || '作品';
+  f.setAttribute('sandbox', src.external ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-pointer-lock' : 'allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups');
+  f.setAttribute('allow', 'fullscreen; gamepad; clipboard-write; autoplay'); f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+  body.appendChild(f); QP.el.hidden = false;
+  if (src.hosted) { const html = await loadWork(src.hosted); if (QP.it !== it) return; if (!html) { body.innerHTML = '<p class="mute" style="padding:40px;text-align:center">作品文件没找到，房主可能刚刚移除了它。</p>'; return; } f.srcdoc = html; }
+  else if (src.srcdoc) f.srcdoc = src.srcdoc; else f.src = src.src;
+  if (it.real && !it.key.startsWith('demo:')) recordVisit(it.key, '试玩 ' + String(e.title || '').slice(0, 20));
+}
+$('#themeBtn').addEventListener('click', toggleTheme);
+$('#openObjFeed').addEventListener('click', openObjFeed);
+function closeQuickPlay() { if (!QP.el || QP.el.hidden) return; QP.el.hidden = true; QP.it = null; QP.el.querySelector('.qp-body').innerHTML = ''; }
+
+/* ---------- Bit：接待与转达 ---------- */
+function relayKey() { return S.room ? roomKey(S.room) : null; }
+async function relaySend(kind, text, when) {
+  const key = relayKey(); if (!key) return false;
+  if (CLOUD.ready) {
+    if (!canPost()) { toast('你现在只能参观：留言需要房主把你设为“参与者”'); return false; }
+    const ok = await postMessage(key, text, null, kind === 'appt' ? { kind: 'appt', when } : null);
+    if (ok) recordVisit(key, kind === 'appt' ? '预约' : '留言');
+    return ok;
+  }
+  GB.unshift({ name: '访客', text: (kind === 'appt' ? `【预约 ${when || '时间待定'}】` : '') + text, time: '刚刚' }); if (GB.length > 20) GB.pop();
+  store.set('gebi.guestbook', GB); drawChalk(); return true;
+}
+async function relayNudge() {
+  const key = relayKey(); if (!key || !CLOUD.ready) return 'offline';
+  if (!canPost()) return 'readonly';
+  const me = CLOUD.me.id, mine = roomMessages(key).filter(m => m.author === me && !m.reply && !hasReply(key, m)).pop();
+  if (!mine) return 'none';
+  if (mine.nudge && Date.now() - mine.nudge < 6 * 3600e3) return 'cool';
+  const d = clone(CLOUD.msgs.get(me) || {}), m = (d.list || []).find(x => x.id === mine.id); if (!m) return 'none';
+  m.nudge = Date.now(); d.updatedAt = Date.now(); CLOUD.msgs.set(me, d); onMsgs();
+  try { await cloudWrite(`msgs/${me}`, d); return 'ok'; } catch (e) { return 'fail'; }
+}
+function hasUnrepliedOfMine() { const key = relayKey(); if (!key || !CLOUD.ready) return false; const me = CLOUD.me.id; return roomMessages(key).some(m => m.author === me && !m.reply && !hasReply(key, m)); }
+function relayLog(text) { S.chat.log.push({ role: 'act', text }); renderChat(); }
+function openRelay(mode) { S.relayMode = mode; renderRelay(); }
+function renderRelay() {
+  const box = $('#relay'); if (!box) return;
+  const key = relayKey(), owner = CLOUD.ready && iOwnRoom(key);
+  if (owner) {
+    const n = CLOUD.ready ? pendingFor(key).length : 0;
+    box.innerHTML = n ? `<div class="rl-owner"><b>${n} 条留言等你回复</b><span>访客在等，Bit 只转达，回复得你自己来。</span><button type="button" class="btn sm primary" id="rlInbox">去访客簿回复</button></div>` : '';
+    const b = $('#rlInbox'); if (b) b.addEventListener('click', () => openInbox());
+    return;
+  }
+  const mode = S.relayMode;
+  if (!mode) {
+    box.innerHTML = `<div class="rl-bar"><span>我只负责接待和转达</span><div><button type="button" class="btn sm" data-r="msg">给老板留言</button><button type="button" class="btn sm" data-r="appt">约个时间</button>${hasUnrepliedOfMine() ? '<button type="button" class="btn sm ghost" data-r="nudge">提醒老板回复</button>' : ''}</div></div>`;
+  } else {
+    box.innerHTML = `<form class="rl-form" id="rlForm"><label for="rlText">${mode === 'appt' ? '想和老板聊什么？' : '想对老板说什么？'}</label>
+      ${mode === 'appt' ? '<div class="rl-when" id="rlWhen">' + ['今晚', '这周内', '下周', '随时都行'].map((w, i) => `<button type="button" data-w="${w}" aria-pressed="${i === 0}">${w}</button>`).join('') + '</div>' : ''}
+      <textarea class="input" id="rlText" maxlength="120" rows="2" placeholder="${mode === 'appt' ? '一句话说清楚事由，比如：想聊聊你的拾光怎么做桌面托盘' : '我原话贴到黑板上，老板回复后你会在“动态”里看到'}"></textarea>
+      <div class="rl-act"><button type="submit" class="btn sm primary">${mode === 'appt' ? '帮我约' : '帮我转达'}</button><button type="button" class="btn sm ghost" data-r="cancel">算了</button></div></form>`;
+  }
+  box.onclick = async ev => {
+    const b = ev.target.closest('[data-r],[data-w]'); if (!b) return;
+    if (b.dataset.w) { box.querySelectorAll('[data-w]').forEach(x => x.setAttribute('aria-pressed', x === b)); return; }
+    const r = b.dataset.r;
+    if (r === 'cancel') { S.relayMode = null; renderRelay(); }
+    else if (r === 'msg' || r === 'appt') openRelay(r);
+    else if (r === 'nudge') {
+      const res = await relayNudge();
+      const msg = { ok: '已提醒老板：你的留言还在等回复', cool: '刚催过，老板看到了。过几个小时再来', none: '没有等回复的留言可催', readonly: '你现在只能参观，不能催', offline: '离线演示里没法催', fail: '没催成功，稍后再试' }[res];
+      relayLog(msg); renderRelay();
+    }
+  };
+  const f = $('#rlForm'); if (f) { f.onsubmit = async ev => {
+    ev.preventDefault(); const t = $('#rlText').value.trim(); if (!t) { $('#rlText').focus(); return; }
+    const w = mode === 'appt' ? ((box.querySelector('[data-w][aria-pressed="true"]') || {}).dataset || {}).w || '时间待定' : '';
+    const ok = await relaySend(mode, t, w);
+    if (ok) { S.relayMode = null; relayLog(mode === 'appt' ? `已转达：想约老板「${w}」聊一聊，贴在了黑板上` : '已转达：你的话贴到了后墙黑板'); const m = { role: 'bit', text: mode === 'appt' ? '约好啦，我把时间和事由贴给老板了。他看到会回复你，别忘了回来看“动态”。' : '收到，已经贴到黑板上。老板回复后你会在“动态”里看到。' }; S.chat.log.push(m); renderChat(); renderRelay(); }
+  }; setTimeout(() => { const i = $('#rlText'); if (i && !isNarrow()) i.focus({ preventScroll: true }); }, 30); }
+}
 
 
 /* deck */
