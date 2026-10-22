@@ -1,0 +1,7 @@
+* text=auto eol=lf
+*.xlsx binary
+*.png binary
+*.jpg binary
+assets/land.txt -diff linguist-generated
+design-system/project/tokens.json linguist-generated
+design-system/project/components/bundle.css linguist-generated

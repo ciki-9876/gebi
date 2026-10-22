@@ -1,0 +1,43 @@
+{
+  "v": 3,
+  "layout": "files",
+  "createdOnFiles": {
+    "v": 1,
+    "at": "2026-10-22T10:44:51Z"
+  },
+  "title": "隔壁设计系统",
+  "namespace": "Gebi",
+  "libraries": [],
+  "sections": {},
+  "groups": [
+    "Logos"
+  ],
+  "assetGroups": {
+    "Logos": {
+      "name": "Logos",
+      "tile": "m",
+      "order": [
+        "gebi-mark.svg"
+      ],
+      "files": {
+        "gebi-mark.svg": {
+          "name": "gebi-mark.svg",
+          "blob": "e41aa135a53bce111913f44ebc16be99",
+          "size": 460,
+          "type": "image/svg+xml"
+        }
+      }
+    }
+  },
+  "blobs": {},
+  "docs": {
+    "readme": "project/README.md",
+    "sections": []
+  },
+  "lastChange": {
+    "by": "CikiLaw",
+    "at": "2026-10-22T10:44:51Z",
+    "via": "GitHub · ciki-9876/gebi",
+    "note": "从 styles/tokens.css 与组件样式建立 v1：51 个颜色、17 个组件"
+  }
+}

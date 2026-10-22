@@ -1,0 +1,28 @@
+name: 问题反馈
+description: 某个功能没有按预期工作
+labels: [bug]
+body:
+  - type: dropdown
+    id: role
+    attributes:
+      label: 你的身份
+      options: [房主, 参与者, 查看者, 本地单机模式]
+    validations: { required: true }
+  - type: input
+    id: device
+    attributes:
+      label: 设备和浏览器
+      placeholder: 例如 iPhone 15 · Safari / MacBook · Chrome 130
+    validations: { required: true }
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: "1. 打开 #room-302\n2. 点导览里的“拾光”\n3. …"
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望和实际
+      placeholder: 期望看到…，实际看到…（有截图或控制台报错请贴上）
+    validations: { required: true }

@@ -191,13 +191,30 @@ function mergeBoxes(list) {
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return geo;
 }
+// 画布上的字体与颜色从设计系统读取（styles/tokens.css），不要在这里另起一套
+const cssVar = (n, d) => { try { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || d; } catch (e) { return d; } };
 const FONT = {
-  body: '"Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif',
-  mono: '"Fragment Mono",ui-monospace,Menlo,monospace',
-  neon: '"Tilt Neon","Noto Sans SC",sans-serif',
-  chalk: '"ZCOOL KuaiLe","Noto Sans SC",sans-serif',
-  disp: '"ZCOOL QingKe HuangYou","Noto Sans SC",sans-serif'
+  body: cssVar('--font-sans', '"Noto Sans SC",sans-serif'),
+  mono: cssVar('--font-mono', 'ui-monospace,Menlo,monospace'),
+  neon: '"Tilt Neon","Noto Sans SC",sans-serif',      // 3D 场景里的霓虹灯牌
+  chalk: '"ZCOOL KuaiLe","Noto Sans SC",sans-serif',  // 3D 场景里的粉笔黑板
+  disp: cssVar('--font-sans', '"Noto Sans SC",sans-serif')
 };
+const TK = {
+  bg: cssVar('--ink-900', '#0c0e13'), surface: cssVar('--ink-750', '#1c2129'), text1: cssVar('--fog-100', '#eef1f6'), text2: cssVar('--fog-300', '#a4adbd'), text3: cssVar('--fog-500', '#808a9c'),
+  accent: cssVar('--lamp-500', '#f5b94a'), accentText: cssVar('--lamp-400', '#ffd27a'), info: cssVar('--screen-400', '#7db7ff'), heat: cssVar('--heat-400', '#ff7aa8'), line: 'rgba(214,224,255,.14)'
+};
+/* 门牌：系统的标志元素，画布版本（3D 门上、分享卡片）与 .plate-no 保持一致 */
+function drawPlate(g, x, y, w, h, no, scale = 1) {
+  g.save();
+  g.fillStyle = TK.surface; rr(g, x, y, w, h, 12 * scale); g.fill();
+  g.strokeStyle = 'rgba(245,185,74,.55)'; g.lineWidth = 2 * scale; rr(g, x + scale, y + scale, w - 2 * scale, h - 2 * scale, 11 * scale); g.stroke();
+  const wx = x + 18 * scale, wy = y + h / 2 - 11 * scale;
+  g.shadowColor = TK.accent; g.shadowBlur = 14 * scale; g.fillStyle = TK.accent; rr(g, wx, wy, 16 * scale, 22 * scale, 3 * scale); g.fill(); g.shadowBlur = 0;
+  g.fillStyle = TK.accentText; g.font = `600 ${Math.round(h * .5)}px ${FONT.mono}`; g.textBaseline = 'middle'; g.textAlign = 'left';
+  g.fillText(no, wx + 30 * scale, y + h / 2 + 2 * scale);
+  g.restore();
+}
 
 /* ============================================================
    State
@@ -1060,8 +1077,7 @@ function buildDoor(def, theme) {
   const ring = mesh(new THREE.TorusGeometry(.17, .028, 8, 28), M('#c79a4a', .3, .85), 0, 2.2, .05, leaf);
   mesh(SPH(.05), M('#c79a4a', .3, .85), .46, 1.2, .08, leaf); mesh(SPH(.05), M('#c79a4a', .3, .85), .46, 1.2, -.08, leaf);
   const pc = mkCanvas(128, 64), px = pc.getContext('2d');
-  const gr = px.createLinearGradient(0, 0, 128, 64); gr.addColorStop(0, '#ecc785'); gr.addColorStop(1, '#ad7631'); px.fillStyle = gr; px.fillRect(0, 0, 128, 64);
-  px.fillStyle = '#2a1706'; px.font = '40px ' + FONT.disp; px.textAlign = 'center'; px.textBaseline = 'middle'; px.fillText(S.room ? S.room.no : '302', 64, 34);
+  px.fillStyle = TK.bg; px.fillRect(0, 0, 128, 64); drawPlate(px, 2, 6, 124, 52, S.room ? S.room.no : '302', .9);
   const plate = new THREE.Mesh(new THREE.PlaneGeometry(.36, .18), new THREE.MeshStandardMaterial({ map: texOf(pc), roughness: .3, metalness: .5 }));
   plate.position.set(0, 1.64, .046); leaf.add(plate);
   S.dyn.door = { pivot, open: 0, goal: 0 };
@@ -1697,13 +1713,13 @@ function buildGlobe(landBuf) {
     fragmentShader: `
       uniform vec3 sunDir; varying vec3 vNv; varying vec3 vN;
       void main(){ float i = pow(clamp(.74 - dot(vNv, vec3(0., 0., 1.)), 0., 1.), 3.4);
-        vec3 c = mix(vec3(.95, .28, .62), vec3(.25, .72, 1.), smoothstep(-.4, .5, dot(normalize(vN), normalize(sunDir))));
-        gl_FragColor = vec4(c * i * 1.45, 1.); }`
+        vec3 c = mix(vec3(.3, .36, .95), vec3(.42, .7, 1.), smoothstep(-.4, .5, dot(normalize(vN), normalize(sunDir))));
+        gl_FragColor = vec4(c * i * 1.15, 1.); }`
   }));
   G.halo = halo; root.add(halo);
 
   // ---- orbit rings with travelling packets
-  [[1.42, .32, .9, '#62e6ff'], [1.7, -.55, .4, '#ff5aa8']].forEach(([r, tilt, spin, col], k) => {
+  [[1.42, .32, .9, '#7db7ff'], [1.7, -.55, .4, '#9d8cff']].forEach(([r, tilt, spin, col], k) => {
     const ring = new THREE.Group(); ring.rotation.set(tilt, spin, k ? .3 : -.2);
     const t = new THREE.Mesh(new THREE.TorusGeometry(r, .0011, 6, 256), new THREE.MeshBasicMaterial({ color: new THREE.Color(col).multiplyScalar(.6), transparent: true, opacity: .55, blending: THREE.AdditiveBlending, depthWrite: false }));
     t.rotation.x = Math.PI / 2; ring.add(t);
@@ -1748,9 +1764,9 @@ function isWater(lat, lon) {
 }
 function residentColor(r) {
   const info = residentInfo(r);
-  if (info.mine) return '#ffb454';
+  if (info.mine) return TK.accent;
   if (r.preset) return ROOM_PRESETS[r.preset].theme.neonColor;
-  if (r.state === 'reno') return '#a99db4';
+  if (r.state === 'reno') return TK.text3;
   return '#' + new THREE.Color().setHSL(r.hue || .5, .85, .66).getHexString();
 }
 function addPin(r, landing) {
@@ -1792,7 +1808,7 @@ function buildArcs() {
     const mine = !real && (r.preset === 'mine' || o.preset === 'mine');
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
-      uniforms: { time: { value: 0 }, phase: { value: Math.random() }, col: { value: new THREE.Color(real ? '#ff5aa8' : mine ? '#ffb454' : '#62e6ff') }, dim: { value: 1 } },
+      uniforms: { time: { value: 0 }, phase: { value: Math.random() }, col: { value: new THREE.Color(real ? TK.heat : mine ? TK.accent : TK.info) }, dim: { value: 1 } },
       vertexShader: 'varying float vT; void main(){ vT = uv.x; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
       fragmentShader: 'uniform float time, phase, dim; uniform vec3 col; varying float vT; void main(){ float d = fract(vT - time * .22 - phase); float pulse = smoothstep(0., .02, d) * smoothstep(.16, .0, d); float base = .12 + .1 * sin(vT * 3.14159); gl_FragColor = vec4(col * (1. + pulse * 2.2), (base + pulse * .95) * dim * smoothstep(0., .04, vT) * smoothstep(1., .96, vT)); }'
     });
@@ -1929,6 +1945,7 @@ async function initCloud() {
     CLOUD.canWrite = await user.can('data.write');
     try { const st = await db.doc(`data/users/${me.id}/state`).get(); CLOUD.lastSeen = st.exists ? (+st.data().lastSeen || 0) : 0; } catch (e) {}
     CLOUD.ready = true;
+    loadPocket();
     const err = e => { if (e && e.code === 'revoked') { CLOUD.ready = false; syncChrome(); } };
     db.doc('site/room302').onSnapshot(s => { CLOUD.site = s.exists ? s.data() : null; onSite(); }, err);
     db.collection('rooms').onSnapshot(s => { CLOUD.rooms = new Map(s.docs.filter(d => d.exists).map(d => [d.id, d.data()])); onRooms(); }, err);
@@ -2096,7 +2113,7 @@ async function postMessage(key, text, reply, extra) {
 }
 function threadHTML(key, opts = {}) {
   const all = roomMessages(key), tops = all.filter(m => !m.reply), owner = iOwnRoom(key);
-  if (!tops.length) return `<p class="mute small" style="margin:0 0 12px">${opts.empty || '黑板还是空的，第一个写点什么吧。'}</p>`;
+  if (!tops.length) return `<p class="mute small u-mb3">${opts.empty || '黑板还是空的，第一个写点什么吧。'}</p>`;
   return tops.slice().reverse().slice(0, opts.limit || 40).map(m => {
     const replies = all.filter(x => x.reply && x.reply.id === m.id);
     return `<div class="gb-item" data-id="${esc(m.id)}">${m.kind === 'appt' ? `<span class="tag pink">预约 · ${esc(m.when || '时间待定')}</span> ` : ''}${esc(m.text)}<small><span>— ${esc(nameOfUid(m.author))}</span><span>${m.nudge && !replies.length ? `催过一次 · ` : ''}${esc(ago(m.at))}</span></small>
@@ -2114,13 +2131,14 @@ function bindReplies(root, key, after) {
 
 /* ---------- visits ---------- */
 let visitT = 0;
-function recordVisit(key, did) {
-  if (!canPost() || !key || iOwnRoom(key)) return;
+const VIA = { share: '分享链接', feed: '物件流', globe: '地球', room: '串门', search: '搜索', link: '直接链接' };
+function recordVisit(key, did, via) {
+  if (!canPost() || !key || iOwnRoom(key) || key.startsWith('demo:')) return;
   const uid = CLOUD.me.id, d = clone(CLOUD.visits.get(uid) || {});
   d.log = d.log && typeof d.log === 'object' ? d.log : {};
   const cur = d.log[key] || { n: 0, did: [] };
   if (did) cur.did = [...new Set([String(did).slice(0, 30)].concat(cur.did || []))].slice(0, 8);
-  else cur.n = (+cur.n || 0) + 1;
+  else { cur.n = (+cur.n || 0) + 1; if (via && VIA[via]) { cur.via = cur.via && typeof cur.via === 'object' ? cur.via : {}; cur.via[via] = (+cur.via[via] || 0) + 1; } }
   cur.at = Date.now(); d.log[key] = cur;
   const keys = Object.keys(d.log).sort((a, b) => d.log[b].at - d.log[a].at).slice(0, 150);
   d.log = Object.fromEntries(keys.map(k => [k, d.log[k]])); d.rooms = keys; d.updatedAt = Date.now();
@@ -2129,7 +2147,7 @@ function recordVisit(key, did) {
 }
 function roomVisitors(key) {
   const out = [];
-  CLOUD.visits.forEach((d, uid) => { const v = d && d.log && d.log[key]; if (v && uid !== (CLOUD.me && CLOUD.me.id && iOwnRoom(key) ? CLOUD.me.id : '')) out.push({ uid, at: +v.at || 0, n: +v.n || 1, did: Array.isArray(v.did) ? v.did.map(x => String(x).slice(0, 30)).slice(0, 8) : [] }); });
+  CLOUD.visits.forEach((d, uid) => { const v = d && d.log && d.log[key]; if (v && uid !== (CLOUD.me && CLOUD.me.id && iOwnRoom(key) ? CLOUD.me.id : '')) out.push({ uid, at: +v.at || 0, n: +v.n || 1, did: Array.isArray(v.did) ? v.did.map(x => String(x).slice(0, 30)).slice(0, 8) : [], via: v.via && typeof v.via === 'object' ? Object.fromEntries(Object.keys(VIA).map(k => [k, +v.via[k] || 0])) : {}, open: v.open && typeof v.open === 'object' ? { sdk: +v.open.sdk || 0, nosdk: +v.open.nosdk || 0, fail: +v.open.fail || 0 } : null }); });
   return out.sort((a, b) => b.at - a.at);
 }
 function myUpdates() {
@@ -2193,20 +2211,23 @@ function renderInbox() {
   const replies = u.replies.slice().reverse().map(m => `<li class="ib-item"><div><b>${esc(nameOfUid(m.author))}</b> 在「${esc(roomTitleOfKey(m.room))}」回复了你</div><p>${esc(m.text)}</p><small>${esc(ago(m.at))}</small>${residentOfKey(m.room) ? `<button type="button" class="btn sm ghost" data-go="${esc(m.room)}">去看看</button>` : ''}</li>`).join('');
   const vis = visitors.map(v => `<li class="ib-item${v.at > since ? ' new' : ''}"><div><b>${esc(nameOfUid(v.uid))}</b> 来过 ${v.n > 1 ? `${v.n} 次` : ''}</div>${v.did.length ? `<p>${esc(didText(v.did, true))}</p>` : '<p class="mute">在房间里逛了逛</p>'}<small>${esc(ago(v.at))}</small></li>`).join('');
   setPanel('我的动态', key ? '访客簿' : '回复与动态', `
-    <div class="bit-say"><div class="bit-face sm" id="ibFace"></div><p>${esc(sentence || (key ? '这段时间没有新动静。把房间分享出去，邻居们就会来串门。' : '你还没有房间。在地球上选个地址入住，邻居们才找得到你。'))}</p></div>
+    <div class="bit-say"><div class="bit-face sm" id="ibFace"></div><p>${esc(sentence || (key ? (visitors.length ? '这段时间没有新动静。' : '还没有人来过。新房间先去串串门最有效：邻居会顺着来访记录回访你。') : '你还没有房间。在地球上选个地址入住，邻居们才找得到你。'))}</p></div>
+    ${key && !sentence && visitors.length < 3 ? coldStartHTML(key) : ''}
+    ${key && visitors.length ? `<p class="section-t">他们从哪里来</p><div class="chiprow">${viaSummary(visitors)}</div>` : ''}
     ${replies ? `<p class="section-t">回复你的消息</p><ul class="ib-list">${replies}</ul><div class="divider"></div>` : ''}
     ${key && curations.length ? `<p class="section-t">被收藏与改编 · ${curations.length}</p><ul class="ib-list">${curations.slice(0, 12).map(c => `<li class="ib-item${c.at > since ? ' new' : ''}"><div><b>${esc(nameOfUid(c.uid))}</b> ${c.adapted ? '改编了' : '收藏了'}「${esc(c.title)}」</div>${c.adapted ? `<p>改编后的名字：${esc(c.mine)}</p>` : ''}<small>${esc(ago(c.at))}</small>${residentOfKey(c.uid) ? `<button type="button" class="btn sm ghost" data-go="${esc(c.uid)}">去 TA 的房间</button>` : ''}</li>`).join('')}</ul><div class="divider"></div>` : ''}
     ${key ? `<p class="section-t">黑板上的留言${key && pendingFor(key).length ? ` · <span class="pending">${pendingFor(key).length} 条等你回复</span>` : ''}</p><div class="gb-list" id="ibThread">${threadHTML(key, { empty: '还没有人留言。', limit: 20 })}</div><div class="divider"></div>
-    <p class="section-t">最近来过的人 · ${visitors.length} 位</p>${vis ? `<ul class="ib-list">${vis}</ul>` : '<p class="mute small" style="margin:0">还没有访客。</p>'}
-    <p class="mute small" style="margin:12px 0 0">访客记录对房间的主人可见，也会作为邻居连线出现在地球上。</p>` : ''}`,
+    <p class="section-t">最近来过的人 · ${visitors.length} 位</p>${vis ? `<ul class="ib-list">${vis}</ul>` : '<p class="mute small u-m0">还没有访客。</p>'}
+    <p class="mute small u-mt3">访客记录对房间的主人可见，也会作为邻居连线出现在地球上。只能参观的“查看者”不会留下记录。</p>` : ''}`,
     key ? `<button type="button" class="btn primary" id="ibGo">${S.view === 'room' && roomKey(S.room) === key ? '留在房间里' : '回到我的房间'}</button>` : `<button type="button" class="btn primary" id="ibPick">选址入住</button>`);
   $('#ibFace').appendChild(faceCanvas);
   pBody.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { const r = residentOfKey(b.dataset.go); if (!r) return; if (S.view === 'globe') diveInto(r); else { closePanel(); toast('出门后在地球上找到它，或者从这里直接过去'); goRoomFromRoom(r); } }));
   if (key) bindReplies(pBody, key, renderInbox);
+  bindColdStart(pBody);
   const go = $('#ibGo'); if (go) go.addEventListener('click', () => { const r = myResident(); closePanel(); if (r && !(S.view === 'room' && roomKey(S.room) === key)) { if (S.view === 'globe') diveInto(r); else goRoomFromRoom(r); } });
   const pk = $('#ibPick'); if (pk) pk.addEventListener('click', () => { closePanel(); if (S.view === 'room') exitToGlobe().then(() => $('#pickAddr').click()); else $('#pickAddr').click(); });
 }
-async function goRoomFromRoom(r) { await exitToGlobe(); diveInto(r); }
+async function goRoomFromRoom(r) { await exitToGlobe(); S.via = 'room'; diveInto(r); }
 
 /* ---------- hosted single-file works ---------- */
 const WORK_MAX = 200 * 1024;
@@ -2233,42 +2254,48 @@ function takeSnapshotIfAsked() { if (!snapWait) return; const r = snapWait; snap
 function loadImg(src) { return new Promise(res => { if (!src) return res(null); const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; }); }
 async function composeCard(shot) {
   const W = 1080, H = 1440, c = mkCanvas(W, H), g = c.getContext('2d'), room = S.room, sky = S.dyn && S.dyn.sky;
-  g.fillStyle = '#100d17'; g.fillRect(0, 0, W, H);
+  g.fillStyle = TK.bg; g.fillRect(0, 0, W, H);
   const img = await loadImg(shot);
   if (img) { const s = Math.max(W / img.width, 1080 / img.height), dw = img.width * s, dh = img.height * s; g.drawImage(img, (W - dw) / 2, (1080 - dh) / 2, dw, dh); }
-  const gr = g.createLinearGradient(0, 640, 0, 1120); gr.addColorStop(0, 'rgba(16,13,23,0)'); gr.addColorStop(1, 'rgba(16,13,23,1)'); g.fillStyle = gr; g.fillRect(0, 640, W, 480);
-  g.fillStyle = 'rgba(16,13,23,.72)'; rr(g, 48, 48, 164, 64, 16); g.fill();
-  g.fillStyle = '#ffb454'; g.font = `40px ${FONT.disp}`; g.textBaseline = 'middle'; g.fillText('隔壁', 104, 82);
-  g.strokeStyle = '#ffb454'; g.lineWidth = 4; g.beginPath(); g.moveTo(66, 92); g.lineTo(80, 72); g.lineTo(94, 92); g.stroke();
+  const gr = g.createLinearGradient(0, 640, 0, 1120); gr.addColorStop(0, 'rgba(12,14,19,0)'); gr.addColorStop(1, TK.bg); g.fillStyle = gr; g.fillRect(0, 640, W, 480);
+  // 左上角标志：两栋房子，右边那间亮着灯
+  g.fillStyle = 'rgba(12,14,19,.78)'; rr(g, 48, 48, 176, 68, 18); g.fill();
+  g.save(); g.translate(66, 58); g.scale(1.5, 1.5); g.lineWidth = 2.2; g.lineJoin = 'round'; g.lineCap = 'round';
+  g.strokeStyle = TK.text1; g.beginPath(); g.moveTo(3.5, 27.5); g.lineTo(3.5, 14.2); g.lineTo(11, 7.8); g.lineTo(18.5, 14.2); g.lineTo(18.5, 27.5); g.closePath(); g.stroke();
+  g.strokeStyle = TK.text2; g.beginPath(); g.moveTo(18.5, 27.5); g.lineTo(18.5, 15.6); g.lineTo(23.5, 11.3); g.lineTo(28.5, 15.6); g.lineTo(28.5, 27.5); g.closePath(); g.stroke();
+  g.shadowColor = TK.accent; g.shadowBlur = 8; g.fillStyle = TK.accent; rr(g, 21.3, 18.6, 4.4, 5.2, 1); g.fill(); g.restore();
+  g.fillStyle = TK.text1; g.font = `700 36px ${FONT.disp}`; g.textBaseline = 'middle'; g.fillText('隔壁', 126, 83);
   const bx = 64, by = 1060;
-  const pg = g.createLinearGradient(bx, by, bx + 200, by + 110); pg.addColorStop(0, '#ecc785'); pg.addColorStop(1, '#ad7631');
-  g.fillStyle = pg; rr(g, bx, by, 196, 104, 18); g.fill();
-  g.fillStyle = '#2a1706'; g.font = `72px ${FONT.disp}`; g.textAlign = 'center'; g.fillText(room.no, bx + 98, by + 56); g.textAlign = 'left';
-  g.fillStyle = '#f2e9dd'; g.font = `78px ${FONT.disp}`; g.fillText(wrapText(g, room.name, 760, 1)[0] || '', bx + 230, by + 50);
-  g.fillStyle = '#a99db4'; g.font = `30px ${FONT.body}`;
+  drawPlate(g, bx, by, 206, 104, room.no, 2.2);
+  g.fillStyle = TK.text1; g.font = `700 72px ${FONT.disp}`; g.textBaseline = 'middle'; g.fillText(wrapText(g, room.name, 740, 1)[0] || '', bx + 240, by + 46);
+  g.fillStyle = TK.text2; g.font = `30px ${FONT.body}`;
   const pubOwner = room.owner !== '你' ? room.owner : room.uid ? String((CLOUD.rooms.get(room.uid) || {}).handle || '') : (CLOUD.ready ? (NAMES.get(CLOUD.me.id) || '房主') : '房主');
   g.fillText(`${room.city || ''} · 房主 ${pubOwner}${sky ? ` · 当地 ${sky.time} ${sky.label}` : ''}`, bx + 232, by + 112);
   const works = [];
   S.roomRoot && S.roomRoot.traverse(o => { const e = entryOf(o); if (e && !['door', 'view', 'music'].includes(e.kind) && e.title) works.push(e.title); });
   let x = bx, y = 1230; g.font = `30px ${FONT.body}`;
-  [...new Set(works)].slice(0, 5).forEach(t => { const w = g.measureText(t).width + 44; if (x + w > W - 64) { x = bx; y += 66; } if (y > 1300) return; g.fillStyle = 'rgba(255,180,84,.14)'; rr(g, x, y - 26, w, 52, 26); g.fill(); g.fillStyle = '#ffcf8a'; g.fillText(t, x + 22, y + 1); x += w + 14; });
-  g.fillStyle = 'rgba(255,196,128,.18)'; g.fillRect(bx, 1350, W - bx * 2, 2);
-  g.fillStyle = '#776d84'; g.font = `26px ${FONT.body}`; g.fillText('隔壁 · 给写代码的人一间房', bx, 1396);
+  [...new Set(works)].slice(0, 5).forEach(t => { const w = g.measureText(t).width + 44; if (x + w > W - 64) { x = bx; y += 66; } if (y > 1300) return; g.fillStyle = 'rgba(245,185,74,.13)'; rr(g, x, y - 26, w, 52, 14); g.fill(); g.fillStyle = TK.accentText; g.fillText(t, x + 22, y + 1); x += w + 14; });
+  g.fillStyle = TK.line; g.fillRect(bx, 1350, W - bx * 2, 2);
+  g.fillStyle = TK.text3; g.font = `26px ${FONT.body}`; g.fillText('隔壁 · 给写代码的人一间房', bx, 1396);
   g.font = `24px ${FONT.mono}`; g.textAlign = 'right'; g.fillText(room.lat != null ? fmtCity(room.lat, room.lon).replace(' · 城市级', '') : '', W - bx, 1396); g.textAlign = 'left';
   return new Promise(res => c.toBlob(b => res(b), 'image/png'));
 }
-function shareLink() { const k = roomKey(S.room); return SHARE_BASE + (k && /^[A-Za-z0-9._~-]+$/.test(k) ? '#room-' + k : ''); }
+function shareLink() { const k = roomKey(S.room); return SHARE_BASE + (k && /^[A-Za-z0-9._~-]+$/.test(k) ? '#room-' + k + '&from=share' : ''); }
 async function openShare() {
   if (S.view !== 'room' || S.busy) return;
   closePanel(true); closeAllWins(); tip.hidden = true; bubble.hidden = true;
-  const shot = await requestSnapshot(), blob = await composeCard(shot);
+  const room0 = S.room, shot = await requestSnapshot();
+  if (S.view !== 'room' || S.room !== room0) return;   // 生成卡片时已经离开了房间
+  const blob = await composeCard(shot);
+  if (S.view !== 'room' || S.room !== room0) return;
   if (!blob) { toast('卡片没生成成功，再试一次'); return; }
   const url = URL.createObjectURL(blob);
   S.panel = { kind: 'share', g: null };
   setPanel('分享 · 房间卡片', S.room.name, `
     <img class="share-img" src="${url}" alt="${esc(S.room.name)} 的分享卡片">
-    <div class="field" style="margin-top:14px"><label for="shareLink">房间链接</label><div class="share-link"><input class="input" id="shareLink" readonly value="${esc(shareLink())}"><button type="button" class="btn" id="copyLink">复制</button></div></div>
-    <p class="mute small" style="margin:0">卡片尺寸 1080 × 1440，适合发小红书和朋友圈。链接需要房主在页面的分享菜单里开放访问，别人才能打开；打开后会直接飞进这间房。</p>`,
+    <div class="field u-mt4"><label for="shareLink">房间链接</label><div class="share-link"><input class="input" id="shareLink" readonly value="${esc(shareLink())}"><button type="button" class="btn" id="copyLink">复制</button></div></div>
+    ${shareAccessHTML()}
+    <p class="mute small u-mt3">卡片尺寸 1080 × 1440，适合发小红书和朋友圈。链接打开后会直接飞进这间房，来访会记成“分享链接”。</p>`,
     `<button type="button" class="btn primary" id="saveCard">保存图片</button><span class="mute small" id="saveNote"></span>`);
   $('#copyLink').addEventListener('click', () => {
     const inp = $('#shareLink');
@@ -2402,12 +2429,19 @@ function tickClock() {
 }
 /* search */
 const gsIn = $('#gsearchIn'), gsSugg = $('#gsugg');
+// 繁体 / 日文汉字 → 简体，只覆盖城市名里常见的字
+const HANZI = { 東: '东', 臺: '台', 灣: '湾', 爾: '尔', 蘭: '兰', 華: '华', 倫: '伦', 約: '约', 紐: '纽', 舊: '旧', 聖: '圣', 羅: '罗', 馬: '马', 漢: '汉', 溫: '温', 哥: '哥', 廣: '广', 門: '门', 島: '岛', 濱: '滨', 莊: '庄', 慶: '庆', 陽: '阳', 寧: '宁', 蘇: '苏', 鄭: '郑', 瀋: '沈', 嶺: '岭', 葉: '叶', 達: '达', 亞: '亚', 歐: '欧', 雪: '雪', 澳: '澳', 灘: '滩', 屋: '屋', 阪: '阪', 橫: '横', 横: '横', 濟: '济', 豐: '丰', 鹽: '盐', 長: '长', 開: '开', 雲: '云', 貝: '贝', 維: '维', 納: '纳', 薩: '萨', 斯: '斯', 黎: '黎', 遜: '逊', 頓: '顿', 賓: '宾', 圖: '图' };
+const normQ = q => q.trim().toLowerCase().replace(/[\u3400-\u9fff]/g, c => HANZI[c] || c);
 function searchMatches(q) {
-  q = q.trim().toLowerCase(); if (!q) return [];
-  const res = [];
-  RESIDENTS.forEach(r => { const i = residentInfo(r); if ([i.handle, i.name, i.city, r.no].some(s => s && String(s).toLowerCase().includes(q))) res.push({ type: 'r', r, label: `${i.handle} · ${i.name}`, sub: `${i.city} · ${r.no}` }); });
-  CITIES.forEach(c => { if ([c.zh, c.en, c.country].some(s => s.toLowerCase().includes(q))) res.push({ type: 'c', c, label: c.zh, sub: `${c.country} · ${c.en}` }); });
-  return res.slice(0, 7);
+  q = normQ(q); if (!q) return [];
+  const res = [], seen = new Set();
+  const addR = (r, sub) => { if (seen.has(r)) return; seen.add(r); const i = residentInfo(r); res.push({ type: 'r', r, label: `${i.handle} · ${i.name}`, sub: sub || `${i.city} · ${r.no}` }); };
+  const cities = CITIES.filter(c => [c.zh, c.en, c.country].some(s => normQ(s).includes(q)));
+  // 搜城市时先给出住在那里的人，再给出“在这里选址”
+  cities.slice(0, 2).forEach(c => RESIDENTS.filter(r => r.city === c.zh).forEach(r => addR(r, `住在${c.zh} · ${r.no}`)));
+  RESIDENTS.forEach(r => { const i = residentInfo(r); if ([i.handle, i.name, i.city, r.no].some(s => s && normQ(String(s)).includes(q))) addR(r); });
+  cities.forEach(c => res.push({ type: 'c', c, label: c.zh, sub: `${c.country} · ${c.en} · 在这里选址` }));
+  return res.slice(0, 8);
 }
 function renderSugg() {
   const m = searchMatches(gsIn.value);
@@ -2417,7 +2451,7 @@ function renderSugg() {
 }
 function chooseSugg(x) {
   if (!x) return; gsSugg.hidden = true; gsIn.value = ''; gsIn.blur();
-  if (x.type === 'r') openResident(x.r); else openAddress(x.c.lat, x.c.lon);
+  if (x.type === 'r') openResident(x.r, 'search'); else openAddress(x.c.lat, x.c.lon);
 }
 gsIn.addEventListener('input', renderSugg);
 gsIn.addEventListener('focus', renderSugg);
@@ -2431,10 +2465,10 @@ function nearestResidents(lat, lon, skipNo, n = 3) {
 }
 function kmStr(km) { return km < 10 ? km.toFixed(1) + ' 公里' : km < 1000 ? Math.round(km) + ' 公里' : (km / 1000).toFixed(1) + ' 千公里'; }
 function skyChip(sky) { return `<span class="sky sky-${sky.phase}"><i></i>当地 ${sky.time} · ${sky.label}</span>`; }
-function openResident(r) {
+function openResident(r, via) {
   const info = residentInfo(r);
   if (S.panel) closePanel(true);
-  S.panel = { kind: 'resident', r }; G.hover = null;
+  S.panel = { kind: 'resident', r, via: via || 'globe' }; G.hover = null;
   G.shiftGoal = isNarrow() ? 0 : -200;
   clearMarker();
   flyGlobe(r.lat, r.lon, isNarrow() ? 2.6 : 2.25, 1.5);
@@ -2444,9 +2478,10 @@ function openResident(r) {
   const near = nearestResidents(r.lat, r.lon, r.no).map(x => { const i = residentInfo(x.r); return `<li><button type="button" class="nb" data-no="${esc(x.r.no)}"><i style="--c:${residentColor(x.r)}"></i>${esc(i.handle)}<span>${esc(i.city)} · ${kmStr(x.km)}</span></button></li>`; }).join('');
   const st = rng(hash(r.no));
   setPanel(`${info.city} · ${info.no}`, info.name || '未命名房间', `
-    <div class="unit-hero"><div class="plate-no">${esc(info.no)}</div><div><div style="font-weight:700">${esc(info.mine && !info.custom ? '你的房间' : info.handle)}</div><div class="mute small">${esc(info.tagline || '')}</div></div></div>
+    <div class="unit-hero"><div class="plate-no">${esc(info.no)}</div><div><div class="u-strong">${esc(info.mine && !info.custom ? '你的房间' : info.handle)}</div><div class="mute small">${esc(info.tagline || '')}</div></div></div>
     <div class="chiprow">${skyChip(sky)}${(info.tags || []).map(t => `<span class="tag dim">${esc(t)}</span>`).join('')}${info.state === 'reno' ? '<span class="tag pink">装修中</span>' : ''}${info.demo ? '<span class="tag dim">演示住户</span>' : ''}</div>
     <p class="coord">${fmtCity(r.lat, r.lon)}</p>
+    ${cardHTML(r)}
     ${works ? `<p class="section-t">房间里的作品</p><ul class="works">${works}</ul>` : ''}
     <div class="divider"></div>
     <p class="section-t">离得最近的邻居</p><ul class="nblist">${near}</ul>
@@ -2454,8 +2489,9 @@ function openResident(r) {
     ${CLOUD.ready && keyOfResident(r) ? `<dl class="kv"><dt>来过的人</dt><dd>${roomVisitors(keyOfResident(r)).length} 位</dd><dt>留言</dt><dd>${roomMessages(keyOfResident(r)).filter(m => !m.reply).length} 条</dd></dl>` : `<dl class="kv"><dt>本周访客</dt><dd>${80 + Math.floor(st() * 900)} <span class="mute small">（演示数据）</span></dd><dt>点亮</dt><dd>${20 + Math.floor(st() * 400)}</dd></dl>`}`,
     info.state === 'reno' ? `<button type="button" class="btn" disabled>装修中，暂不开放</button>` :
       `<button type="button" class="btn primary" id="enterUnit">${info.mine ? '回到我的房间' : '敲门进去'}</button>${info.mine && !info.custom && (!CLOUD.ready || canPost()) ? '<button type="button" class="btn ghost" id="moveHome">搬家</button>' : ''}`);
-  const b = $('#enterUnit'); if (b) b.addEventListener('click', () => diveInto(r));
+  const b = $('#enterUnit'); if (b) b.addEventListener('click', () => { S.via = via || 'globe'; diveInto(r); });
   const mv = $('#moveHome'); if (mv) mv.addEventListener('click', startMove);
+  bindCard(pBody);
   pBody.querySelectorAll('.nb').forEach(x => x.addEventListener('click', () => { const o = RESIDENTS.find(y => y.no === x.dataset.no); if (o) openResident(o); }));
 }
 function startMove() {
@@ -2484,13 +2520,13 @@ function openAddress(lat, lon) {
   const head = `<p class="coord big">${fmtCity(lat, lon)}</p><div class="chiprow">${skyChip(sky)}<span class="tag dim">${esc(place.sub)}</span></div>${water ? '' : `<p class="privacy">为保护隐私，地址只公开到城市：房子会落在${esc(place.km < 320 ? place.city.zh : '这一带')}的一个随机位置，地图上不会出现你点的精确点。</p>`}`;
   if (water) {
     const c = place.city;
-    setPanel('选址 · 海上', place.title, `${head}<p style="margin:0 0 6px">这里是海上，暂时盖不了房子。</p><p class="mute small" style="margin:0">离这里最近的城市是${esc(c.zh)}，约 ${kmStr(place.km)}。</p>`,
+    setPanel('选址 · 海上', place.title, `${head}<p class="u-mb2">这里是海上，暂时盖不了房子。</p><p class="mute small u-m0">离这里最近的城市是${esc(c.zh)}，约 ${kmStr(place.km)}。</p>`,
       `<button type="button" class="btn primary" id="goCity">去${esc(c.zh)}看看</button>`);
     $('#goCity').addEventListener('click', () => openAddress(c.lat, c.lon));
     return;
   }
   if (G.moving) {
-    setPanel('搬家 · 新地址', place.title, `${head}<p style="margin:0">把${CLOUD.ready && !CLOUD.isOwner ? '你的房间' : ' 302「零点电竞酒吧」'}搬到这里？房间里的布置和作品都会跟着走，窗外会换成这里的天色。</p><p class="mute small" style="margin:10px 0 0">新邻居：${nearTxt}</p>`,
+    setPanel('搬家 · 新地址', place.title, `${head}<p class="u-m0">把${CLOUD.ready && !CLOUD.isOwner ? '你的房间' : ' 302「零点电竞酒吧」'}搬到这里？房间里的布置和作品都会跟着走，窗外会换成这里的天色。</p><p class="mute small u-mt3">新邻居：${nearTxt}</p>`,
       `<button type="button" class="btn primary" id="doMove">搬到这里</button><button type="button" class="btn ghost" id="cancelMove">再看看</button>`);
     $('#doMove').addEventListener('click', () => doMove(lat, lon, place));
     $('#cancelMove').addEventListener('click', () => { closePanel(); });
@@ -2499,12 +2535,12 @@ function openAddress(lat, lon) {
   if (CLOUD.ready) {
     const mine = myResident();
     if (!canPost()) {
-      setPanel('选址 · 陆地', place.title, `${head}<p style="margin:0">你现在是参观者，可以逛地球、进房间看作品。入住和留言需要房主在页面的分享菜单里把你设为“参与者”。</p>`, `<button type="button" class="btn" id="goNear">去最近的邻居家看看</button>`);
+      setPanel('选址 · 陆地', place.title, `${head}<p class="u-m0">你现在是参观者，可以逛地球、进房间看作品。入住和留言需要房主在页面的分享菜单里把你设为“参与者”。</p>`, `<button type="button" class="btn" id="goNear">去最近的邻居家看看</button>`);
       $('#goNear').addEventListener('click', () => near[0] && openResident(near[0].r)); return;
     }
     if (mine) {
       const mi = residentInfo(mine);
-      setPanel('选址 · 陆地', place.title, `${head}<p style="margin:0">你在${esc(mi.city)}已经有一间「${esc(mi.name)}」了。每人一间房，可以把它搬到这里。</p>`,
+      setPanel('选址 · 陆地', place.title, `${head}<p class="u-m0">你在${esc(mi.city)}已经有一间「${esc(mi.name)}」了。每人一间房，可以把它搬到这里。</p>`,
         `<button type="button" class="btn primary" id="mvHere">搬到这里</button><button type="button" class="btn ghost" id="goMineHere">回我的房间</button>`);
       $('#mvHere').addEventListener('click', () => doMove(lat, lon, place));
       $('#goMineHere').addEventListener('click', () => diveInto(mine)); return;
@@ -2512,13 +2548,14 @@ function openAddress(lat, lon) {
   }
   let tpl = 'pixel';
   setPanel('选址 · 陆地', place.title, `${head}
-    <p class="mute small" style="margin:0 0 14px">附近的住户：${nearTxt}。填三样东西，房间会按模板摆好，每个作品一块展示屏。</p>
+    <p class="mute small u-mb4">附近的住户：${nearTxt}。填三样东西，房间会按模板摆好，每个作品一块展示屏。</p>
     <form id="applyForm">
       <div class="field"><label for="apHandle">门牌名</label><input class="input" id="apHandle" maxlength="16" value="newdev" autocomplete="off"><span class="err" id="apErr" hidden></span></div>
       <div class="field"><label for="apName">房间名</label><input class="input" id="apName" maxlength="12" value="周末作坊"></div>
       <div class="field"><label>房间模板</label><div class="tpl-grid" id="tplGrid">${TEMPLATES.map(t => `<button type="button" class="tpl" data-t="${t.id}" aria-pressed="${t.id === tpl}"><i style="background:linear-gradient(120deg,${t.sw[0]} 55%,${t.sw[1]})"></i><b>${t.name}</b><span>${t.desc}</span></button>`).join('')}</div></div>
-      <div class="field"><label for="apWorks">你的作品（每行一个名字，最多 4 个）</label><textarea class="input" id="apWorks" rows="3">番茄钟小工具
-像素画板</textarea></div>
+      <div class="field"><label for="apWorks">先给作品占个位（每行一个名字，最多 4 个）</label><textarea class="input" id="apWorks" rows="3" placeholder="番茄钟小工具&#10;像素画板"></textarea><span class="hint-s">每个名字会变成一块展示屏。入住后在“待上传”清单里点它，上传 .html 或填地址就能打开。没想好可以留空。</span></div>
+      <div class="field"><label for="apBio">一句话介绍自己（选填）</label><input class="input" id="apBio" maxlength="60" placeholder="比如：用 AI 写小工具的前端，在找远程合作" autocomplete="off"></div>
+      ${pocketList().length ? `<label class="check"><input type="checkbox" id="apPocket" checked><span>把口袋里的 ${pocketList().length} 件收藏一起摆进房间</span></label>` : ''}
     </form>`, `<button type="submit" form="applyForm" class="btn primary">在这里入住</button><span class="mute small">${CLOUD.ready ? '保存到隔壁社区，参与者都能看到' : '原型中保存在本机'}</span>`);
   $('#tplGrid').addEventListener('click', e => { const b = e.target.closest('.tpl'); if (!b) return; tpl = b.dataset.t; $('#tplGrid').querySelectorAll('.tpl').forEach(x => x.setAttribute('aria-pressed', x.dataset.t === tpl)); });
   $('#applyForm').addEventListener('submit', e => {
@@ -2533,17 +2570,21 @@ function openAddress(lat, lon) {
     works.forEach((w, i) => { const [x, z, ry] = slots[i]; items.push({ uid: 'w' + i + Date.now().toString(36), type: 'kiosk', x, z, ry, entry: { kind: 'web', title: w, desc: '', url: '' } }); });
     items.push({ uid: 'neon', type: 'neon', wall: 'back', u: -.8, y: 3.6 }, DOOR(tpl === 'leaf' ? -2.6 : 0));
     items.push({ uid: 'chalkboard', type: 'chalkboard', wall: 'back', u: 2.6, y: 1.85, entry: { kind: 'guestbook', title: '留言黑板', desc: '' } });
+    const bio = ($('#apBio').value || '').trim().slice(0, 60), fromPocket = $('#apPocket') && $('#apPocket').checked ? pocketList() : [];
+    fromPocket.forEach(p => { const sp = freeSpot(items); items.push({ uid: 'k' + Math.random().toString(36).slice(2, 8), type: 'keepsake', x: sp.x, z: sp.z, rot: 0, entry: p.e }); });
     const no = newRoomNo(lat, lon), name = $('#apName').value.trim().slice(0, 12) || '新房间';
     const theme = Object.assign({}, base.theme, { neon: handle.toUpperCase() });
     const btn = pFoot.querySelector('button[type="submit"]'); if (btn) btn.disabled = true;
     if (CLOUD.ready) {
       const uid = CLOUD.me.id, sn = snapToCity(lat, lon, uid);
       const doc = { v: 1, no, handle: '@' + handle, name, tpl, theme, items, lat: sn.lat, lon: sn.lon, city: sn.city, createdAt: Date.now(), updatedAt: Date.now() };
+      if (bio) doc.card = { bio };
+      if (fromPocket.length) pocketClear();
       CLOUD.landing = uid; CLOUD.rooms.set(uid, doc); syncRealResidents();
       const r = RESIDENTS.find(x => x.real && x.key === uid);
       closePanel(true); clearMarker(); document.body.classList.add('leaving'); syncChrome();
       cloudWrite(`rooms/${uid}`, doc).catch(() => {});
-      landPin(r).then(() => { CLOUD.landing = null; syncRealResidents(); return sleep(500); }).then(() => diveInto(r, { build: true, msg: `欢迎入住 ${sn.city} · ${no}！已为 ${works.length} 个作品摆好展示屏，选中它们填上地址或上传作品文件` }));
+      landPin(r).then(() => { CLOUD.landing = null; syncRealResidents(); return sleep(500); }).then(() => diveInto(r, { build: true, pickPending: true, msg: works.length ? `欢迎入住 ${sn.city} · ${no}！下面“待上传”里是你的 ${works.length} 件作品，点一件开始上传` : `欢迎入住 ${sn.city} · ${no}！从物件库挑一件，绑定你的第一个作品` }));
       return;
     }
     const sn = snapToCity(lat, lon, no), city = sn.city;
@@ -2552,7 +2593,8 @@ function openAddress(lat, lon) {
     const r = { no, custom: true, handle: '@' + handle, name, city, lat: sn.lat, lon: sn.lon, tagline: '刚入住的新邻居', tags: ['新入住'], friends: near.map(x => x.r.no).slice(0, 1) };
     RESIDENTS.push(r);
     closePanel(true); clearMarker(); document.body.classList.add('leaving'); syncChrome();
-    landPin(r).then(() => { pushFeed([no, `在${city}入住了「${name}」`], '刚刚'); return sleep(500); }).then(() => diveInto(r, { build: true, msg: `欢迎入住 ${city} · ${no}！已为 ${works.length} 个作品摆好展示屏，选中它们填上地址或上传作品文件` }));
+    if (fromPocket.length) pocketClear();
+    landPin(r).then(() => { pushFeed([no, `在${city}入住了「${name}」`], '刚刚'); return sleep(500); }).then(() => diveInto(r, { build: true, pickPending: true, msg: works.length ? `欢迎入住 ${city} · ${no}！下面“待上传”里是你的 ${works.length} 件作品，点一件开始上传` : `欢迎入住 ${city} · ${no}！从物件库挑一件，绑定你的第一个作品` }));
   });
 }
 async function landPin(r) {
@@ -2621,8 +2663,9 @@ async function arriveInRoom(room, opts = {}) {
   if (S.dyn.door) S.dyn.door.goal = 0;
   S.busy = false;
   const rk = roomKey(room);
-  if (rk) { recordVisit(rk); if (iOwnRoom(rk)) { const u = myUpdates(); if (u.count && !opts.msg) setTimeout(() => toast(updatesSentence(u) + ' 点右上角“动态”查看', 5200), 1200); } }
-  if (opts.build) setMode('build');
+  if (rk) { recordVisit(rk, null, S.via || 'globe'); if (iOwnRoom(rk)) { const u = myUpdates(); if (u.count && !opts.msg) setTimeout(() => toast(updatesSentence(u) + ' 点右上角“动态”查看', 5200), 1200); } }
+  S.via = null;
+  if (opts.build) setMode('build').then(() => { if (opts.pickPending) { const p = pendingWorks()[0]; if (p) setTimeout(() => selectItem(p), 300); } });
   if (opts.msg) toast(opts.msg, 4600);
   showControlsHint();
   if (room.agent && !opts.build) setTimeout(() => { if (S.view === 'room' && S.mode === 'visit' && !S.panel && !S.busy) bubble.hidden = false; }, 900);
@@ -2790,8 +2833,7 @@ function openAgent(g) {
     `<form class="composer" id="composer"><input class="input" id="chatInput" autocomplete="off" maxlength="200" placeholder="和 Bit 说点什么…"><button class="btn primary" id="chatSend" type="submit">发送</button></form>`);
   $('#bitFace').appendChild(faceCanvas);
   if (!S.chat.log.length) {
-    const k = roomKey(S.room), u = iOwnRoom(k) ? myUpdates() : null, sum = u && u.count ? updatesSentence(u) : '', pend = iOwnRoom(k) && CLOUD.ready ? pendingFor(k).length : 0;
-    S.chat.log.push({ role: 'bit', text: sum ? `老板回来啦！${sum}${pend ? `还有 ${pend} 条留言等你回复，` : ''}要不要打开访客簿回复一下？` : pend ? `老板回来啦！有 ${pend} 条留言还没回复，访客在等。` : iOwnRoom(k) ? '老板回来啦！这段时间店里很安静，把房间分享出去，客人就会来。' : '欢迎光临零点酒吧！我是 Bit，负责接待和转达：想看老板的作品我带你去，想对老板说什么、想约个时间，我帮你转达。' });
+    S.chat.log.push({ role: 'bit', text: iOwnRoom(roomKey(S.room)) ? ownerGreeting(roomKey(S.room)) : '欢迎光临零点酒吧！我是 Bit，负责接待和转达：想看老板的作品我带你去，想对老板说什么、想约个时间，我帮你转达。' });
   }
   renderChat();
   $('#chips').addEventListener('click', e => { const b = e.target.closest('button'); if (b) agentSend(b.textContent); });
@@ -2878,7 +2920,7 @@ function openShiguang(g) {
   beginPanel('shiguang', g);
   const e = entryOf(g);
   setPanel('App · 洞洞板电子便签', '拾光', `
-    <p class="mute small" style="margin:0 0 12px">${esc(e.desc || '')}</p>
+    <p class="mute small u-mb3">${esc(e.desc || '')}</p>
     <div class="sg" id="sg" data-skin="${SG.skin}">
       <div class="sg-skins seg" id="sgSkins">${Object.entries(SKINS).map(([k, v]) => `<button type="button" data-skin="${k}" aria-pressed="${SG.skin === k}">${v.name}</button>`).join('')}</div>
       <div class="sg-app"><div class="sg-top"><b>今天</b><span id="sgCount"></span></div><ul class="sg-list" id="sgList"></ul>
@@ -2906,7 +2948,7 @@ function openGame(g) {
     <div class="gm-screen" id="gmScreen"></div>
     <div class="gm-hud"><span>得分 <b id="gmScore">0</b></span><span>最高 <b id="gmBest">${game.best}</b></span></div>
     <div class="gm-pad" id="gmPad">${['up', 'left', 'down', 'right'].map(d => `<button type="button" class="${d}" data-d="${d}" aria-label="${{ up: '上', left: '左', down: '下', right: '右' }[d]}">${ICON.arrow(d)}</button>`).join('')}</div>
-    <p class="mute small" style="margin:0">方向键或 WASD 操作。这块画面和房间里那台游戏机的屏幕是同一块，玩的时候可以看看桌上。</p>`, entryFooter(e, g));
+    <p class="mute small u-m0">方向键或 WASD 操作。这块画面和房间里那台游戏机的屏幕是同一块，玩的时候可以看看桌上。</p>`, entryFooter(e, g));
   bindFooter(g);
   $('#gmScreen').appendChild(game.c);
   game.mode = 'ready'; gReset(); updateGameHud();
@@ -2949,7 +2991,7 @@ function openCloudGuestbook(g, key) {
   beginPanel('guestbook', g);
   const owner = iOwnRoom(key);
   setPanel('留言板 · 黑板', owner ? '我的留言板' : '给房主留言', `<div class="gb-list" id="gbList"></div>
-    ${canPost() ? `<form id="gbForm"><div class="field"><label for="gbText">${owner ? '在自己的黑板上写点什么' : '以你的账号留言，房主可以直接回复你'}</label><textarea class="input" id="gbText" maxlength="120" placeholder="${owner ? '比如：本周在做拾光的托盘菜单' : '写给房主的话，最多 120 字'}"></textarea><span class="err" id="gbErr" hidden></span></div></form>` : '<p class="mute small" style="margin:0">你现在是参观者，可以看留言。留言需要房主把你设为“参与者”。</p>'}`,
+    ${canPost() ? `<form id="gbForm"><div class="field"><label for="gbText">${owner ? '在自己的黑板上写点什么' : '以你的账号留言，房主可以直接回复你'}</label><textarea class="input" id="gbText" maxlength="120" placeholder="${owner ? '比如：本周在做拾光的托盘菜单' : '写给房主的话，最多 120 字'}"></textarea><span class="err" id="gbErr" hidden></span></div></form>` : '<p class="mute small u-m0">你现在是参观者，可以看留言。留言需要房主把你设为“参与者”。</p>'}`,
     canPost() ? `<button type="submit" form="gbForm" class="btn primary">贴到黑板上</button><span class="mute small">${owner ? '留言下面可以直接回复' : '回复会出现在你的“动态”里'}</span>` : '');
   const render = () => { const l = $('#gbList'); if (!l) return; l.innerHTML = threadHTML(key); bindReplies(l, key, render); };
   S.panel.render = render; render();
@@ -2967,8 +3009,8 @@ function openEntry(g) {
   const e = entryOf(g), bound = validUrl(e.url);
   setPanel(`${KIND_LABEL[e.kind] || '作品'} · ${nameOf(g)}`, e.title || '未命名作品', `
     <div class="preview" id="pv"></div>
-    ${e.desc ? `<p style="margin:0 0 12px">${esc(e.desc)}</p>` : ''}
-    <dl class="kv"><dt>房主</dt><dd>${esc(S.room.owner)}</dd>${e.from ? `<dt>${e.from.adapted ? '改编自' : '收藏自'}</dt><dd>${esc(e.from.by || '一位邻居')} 的「${esc(e.from.title)}」${(e.from.chain || []).length ? `<br><span class="mute small">更早：${e.from.chain.map(c => esc(c.by) + '「' + esc(c.title) + '」').join(' → ')}</span>` : ''}</dd>` : ''}<dt>物件</dt><dd>${esc(nameOf(g))}</dd><dt>地址</dt><dd>${bound ? `<span style="font-family:var(--f-mono);font-size:12.5px">${esc(e.url)}</span>` : '<span class="mute">还没有绑定</span>'}</dd></dl>
+    ${e.desc ? `<p class="u-mb3">${esc(e.desc)}</p>` : ''}
+    <dl class="kv"><dt>房主</dt><dd>${esc(S.room.owner)}</dd>${e.from ? `<dt>${e.from.adapted ? '改编自' : '收藏自'}</dt><dd>${esc(e.from.by || '一位邻居')} 的「${esc(e.from.title)}」${(e.from.chain || []).length ? `<br><span class="mute small">更早：${e.from.chain.map(c => esc(c.by) + '「' + esc(c.title) + '」').join(' → ')}</span>` : ''}</dd>` : ''}<dt>物件</dt><dd>${esc(nameOf(g))}</dd><dt>地址</dt><dd>${bound ? `<span class="u-mono">${esc(e.url)}</span>` : '<span class="mute">还没有绑定</span>'}</dd></dl>
     ${bound ? '' : `<div class="unbound">这个物件还没绑定作品地址。${S.room.mine ? '在建造模式里选中它，填上地址，就能直接在房间里打开。' : '房主绑定后，这里会出现“打开完整版”。'}</div>`}
     ${hasDownloads(e) ? '<div class="divider"></div>' + downloadsHTML(e) : ''}`,
     entryFooter(e, g));
@@ -3093,7 +3135,7 @@ function downloadsHTML(e, opts = {}) {
     return `<li><span class="dl-ico">${p.icon}</span><div class="grow">${p.label}<small>还没填写下载地址</small></div>${owner ? '<button type="button" class="btn sm ghost" data-act="bind">去填写</button>' : ''}</li>`;
   }).join('');
   if (rows) html += `<ul class="dl-list">${rows}</ul>`;
-  html += `<p class="mute small" style="margin:10px 0 0">${filled.length ? '下载地址由房主填写，指向房主自己的发布渠道；隔壁不托管安装包。' : '在建造模式里选中这个物件，填上各平台的下载地址后，访客会看到适合自己设备的那一项。'}</p>`;
+  html += `<p class="mute small u-mt3">${filled.length ? '下载地址由房主填写，指向房主自己的发布渠道；隔壁不托管安装包。' : '在建造模式里选中这个物件，填上各平台的下载地址后，访客会看到适合自己设备的那一项。'}</p>`;
   return html;
 }
 
@@ -3136,7 +3178,7 @@ function createWin(g, e) {
   const el = document.createElement('section');
   el.className = 'win ' + size; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', e.title || '作品');
   el.innerHTML = `<header class="win-bar"><i class="win-dot" style="background:linear-gradient(135deg,${kc[0]},${kc[1]})"></i>
-    <div class="win-t"><b>${esc(e.title || '作品')}</b><span class="win-sub"><span class="win-host">${esc(host)}</span><span class="win-sdk">连接中</span></span></div>
+    <div class="win-t"><b>${esc(e.title || '作品')}</b><span class="win-sub"><span class="win-host">${esc(host)}</span><button type="button" class="win-sdk" data-a="sdk" disabled>连接中</button></span></div>
     <div class="win-act">${curateOK(e) ? '<button type="button" class="win-get" data-a="collect">☆ 收藏</button><button type="button" class="win-get" data-a="adapt">改编</button>' : ''}${(hasDownloads(e) || (e.kind === 'shiguang' && S.room && S.room.mine)) ? '<button type="button" class="win-get" data-a="dl" aria-expanded="false">获取客户端</button>' : ''}
     <button type="button" class="wbtn" data-a="reload" aria-label="重新载入">${WICON.reload}</button>
     ${src.external ? `<a class="wbtn" href="${esc(src.src)}" target="_blank" rel="noopener noreferrer" aria-label="在新标签页打开">${ICON.ext}</a>` : ''}
@@ -3164,6 +3206,7 @@ function createWin(g, e) {
     else if (a === 'close') closeWin(w);
     else if (a === 'reload') { w.sdk = false; setSdk(w, '连接中', ''); body.querySelector('.win-hint').hidden = true; body.querySelector('.win-load').hidden = false; if (src.hosted) iframe.srcdoc = w.html || ''; else if (src.srcdoc) iframe.srcdoc = src.srcdoc; else iframe.src = src.src; }
     else if (a === 'dl') toggleDl(w, b);
+    else if (a === 'sdk') openSdkGuide();
     else if (a === 'collect') collectEntry(e);
     else if (a === 'adapt') adaptEntry(e);
     else if (a === 'tab') { /* plain link */ }
@@ -3182,13 +3225,13 @@ function hello(w) {
   const data = w.kind === 'shiguang' ? { tasks: SG.tasks, skin: SG.skin, date: DATE_STR } : w.kind === 'game' ? { best: game.best } : {};
   try { w.iframe.contentWindow.postMessage({ gebi: 1, type: 'hello', room: { no: S.room.no, name: S.room.name, owner: S.room.owner }, entry: { title: w.e.title }, data }, w.origin); } catch (x) {}
 }
-function setSdk(w, text, cls) { const s = w.el.querySelector('.win-sdk'); s.textContent = text; s.className = 'win-sdk ' + (cls || ''); }
+function setSdk(w, text, cls) { const s = w.el.querySelector('.win-sdk'); s.textContent = text; s.className = 'win-sdk ' + (cls || ''); s.disabled = !/off|err/.test(cls || ''); s.title = s.disabled ? '' : '查看隔壁 SDK 接入说明'; }
 function noHandshake(w) {
   if (!WINS.has(w.iid) || w.sdk) return;
   if (w.src.hosted) {
     if (!w.loaded) return;
     w.el.querySelector('.win-load').hidden = true;
-    setSdk(w, '未接入隔壁 SDK', 'off');
+    setSdk(w, '未接入 SDK · 怎么接', 'off');
     return;
   }
   if (!w.src.external) {
@@ -3200,12 +3243,16 @@ function noHandshake(w) {
     return;
   }
   w.el.querySelector('.win-load').hidden = true;
-  setSdk(w, w.loaded ? '未接入隔壁 SDK' : '没有响应', 'off');
+  // 跨域页面里看不到内容：没握手时，“加载成功但没接 SDK”和“被拦截/加载失败”分不清，所以照实说
+  setSdk(w, w.loaded ? '未接入 SDK · 怎么接' : '加载失败', w.loaded ? 'off' : 'err');
   const hint = w.el.querySelector('.win-hint');
-  hint.innerHTML = `${w.loaded ? '作品已载入，但没有接入隔壁 SDK：照常可用，只是房间里的物件不会同步状态。' : '作品迟迟没有响应。'}如果画面一直空白，多半是该网站禁止被其他网站嵌入（X-Frame-Options 或 CSP frame-ancestors），或当前预览环境拦截了外部页面。
-    <div class="row"><a class="btn sm primary" href="${esc(w.src.src)}" target="_blank" rel="noopener noreferrer">在新标签页打开 ${ICON.ext}</a>${S.room && S.room.mine ? '<button type="button" class="btn sm" data-a="always-tab">以后都用新标签页</button>' : ''}<button type="button" class="btn sm ghost" data-hide="1">知道了</button></div>`;
+  hint.innerHTML = `${w.loaded
+    ? '<b>窗口里如果有画面，作品就能正常用</b>：它只是没有接入隔壁 SDK，房间里的物件不会同步。<br><b>如果是一片空白</b>：这个网站多半禁止被嵌入，或者加载失败了。隔壁看不到跨站页面的内容，没法替你判断是哪一种。'
+    : '<b>9 秒内没有加载出来。</b>可能是网址打不开、网络太慢，或者网站禁止被其他网站嵌入。'}
+    <div class="row"><a class="btn sm primary" href="${esc(w.src.src)}" target="_blank" rel="noopener noreferrer">在新标签页打开 ${ICON.ext}</a>${S.room && S.room.mine ? '<button type="button" class="btn sm" data-a="always-tab">以后都用新标签页</button>' : ''}${w.loaded && S.room && S.room.mine ? '<button type="button" class="btn sm ghost" data-a="sdk">接入 SDK</button>' : ''}<button type="button" class="btn sm ghost" data-hide="1">知道了</button></div>`;
   hint.hidden = false;
   hint.querySelector('[data-hide]').addEventListener('click', () => { hint.hidden = true; });
+  if (S.room) logOpen(roomKey(S.room), w.loaded ? 'nosdk' : 'fail');
 }
 function toggleDl(w, btn) {
   const d = w.el.querySelector('.win-dl'), open = d.hidden;
@@ -3286,6 +3333,7 @@ addEventListener('message', ev => {
       w.sdk = true; clearTimeout(w.hs);
       w.el.querySelector('.win-load').hidden = true; w.el.querySelector('.win-hint').hidden = true;
       setSdk(w, '已接入隔壁 SDK · 物件同步中', 'on');
+      if (S.room) logOpen(roomKey(S.room), 'sdk');
       if (w.kind === 'game') game.remote = w;
       break;
     case 'screen': if (w.sdk) drawRemoteFrame(w, d.frame); break;
@@ -3324,18 +3372,18 @@ function renderInspector(g) {
   const kept = !!(e && e.from && !e.from.adapted);
   const SW = ['', '#ff5a6e', '#ff9a3d', '#e8c030', '#34b88a', '#3d9be8', '#7c4dff', '#d43d86'];
   setPanel('建造 · 物件设置', nameOf(g), `
-    <p class="mute small" style="margin:0 0 14px">${esc(where)}</p>
-    ${movable ? `<div style="display:flex;gap:8px;margin-bottom:16px"><button type="button" class="btn" id="inRot">${ICON.rot}旋转 90°</button>${meta.nodelete ? '' : `<button type="button" class="btn danger" id="inDel">${ICON.del}删除</button>`}</div>` : ''}
-    <div class="divider" style="margin-top:0"></div>
+    <p class="mute small u-mb4">${esc(where)}</p>
+    ${movable ? `<div class="u-row u-mb4"><button type="button" class="btn" id="inRot">${ICON.rot}旋转 90°</button>${meta.nodelete ? '' : `<button type="button" class="btn danger" id="inDel">${ICON.del}删除</button>`}</div>` : ''}
+    <div class="divider u-mt0"></div>
     <p class="section-t">绑定作品</p>
-    ${!e ? `<p class="mute small" style="margin:0 0 12px">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : kept ? `<p class="small" style="margin:0 0 10px"><span class="tag">收藏品</span> 收藏自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」</p><p class="mute small" style="margin:0">作品属于原作者，这里只负责展示它：访客点开会链回 TA 的房间。想改成自己的版本，请去原房间点“改编一份”。不想留了，直接删除这件物件就行。</p>` : `
+    ${!e ? `<p class="mute small u-mb3">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : kept ? `<p class="small u-mb3"><span class="tag">收藏品</span> 收藏自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」</p><p class="mute small u-m0">作品属于原作者，这里只负责展示它：访客点开会链回 TA 的房间。想改成自己的版本，请去原房间点“改编一份”。不想留了，直接删除这件物件就行。</p>` : `
     <form id="inForm">
-      ${e.from ? `<p class="small" style="margin:0 0 12px"><span class="tag pink">改编</span> 改编自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」，署名会一直保留。</p>` : ''}
-      ${builtin ? `<p class="small" style="margin:0 0 12px"><span class="tag ${e.kind === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[e.kind])}</span> <span class="mute">内置入口，打开方式由房间提供</span></p>` :
+      ${e.from ? `<p class="small u-mb3"><span class="tag pink">改编</span> 改编自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」，署名会一直保留。</p>` : ''}
+      ${builtin ? `<p class="small u-mb3"><span class="tag ${e.kind === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[e.kind])}</span> <span class="mute">内置入口，打开方式由房间提供</span></p>` :
       `<div class="field"><label>作品类型</label><div class="seg" id="inKind">${BIND_KINDS.map(k => `<button type="button" data-k="${k}" aria-pressed="${k === kindSel}">${KIND_LABEL[k]}</button>`).join('')}</div></div>`}
       <div class="field"><label for="inTitle">作品名称</label><input class="input" id="inTitle" maxlength="20" value="${esc(e.title || '')}"></div>
       ${builtin ? '' : `<div class="field"><label>外观 · 主题色</label><div class="swatches" id="inColor">${SW.map(c => `<button type="button" data-c="${c}" style="${c ? 'background:' + c : ''}" aria-pressed="${(e.color || '') === c}" aria-label="${c || '默认'}">${c ? '' : '默认'}</button>`).join('')}</div><span class="mute small">展示屏和街机会换成这个颜色，改编的作品可以先从换色开始。</span></div>`}
-      ${urlAllowed ? `<div class="field"><label for="inUrl">作品地址</label><input class="input" id="inUrl" inputmode="url" placeholder="${DEMOS[e.kind] ? '留空则使用内置示例' : 'https://'}" value="${esc(e.url || '')}"><span class="err" id="inErr" hidden></span><span class="note-warn" id="inWarn">${esc(frameDenyHint(e.url))}</span></div>
+      ${urlAllowed ? `<div class="field"><label for="inUrl">作品地址</label><input class="input" id="inUrl" inputmode="url" placeholder="${DEMOS[e.kind] ? '留空则使用内置示例' : 'https://'}" value="${esc(e.url || '')}"><span class="err" id="inErr" hidden></span><span class="note-warn" id="inWarn">${esc(frameDenyHint(e.url))}</span><span class="hint-s">想让房间里的物件跟着作品变化？<button type="button" class="linkbtn" id="inSdk">看 SDK 接入说明</button></span></div>
       <div class="field"><label>或者上传作品文件，由隔壁托管</label>
         <div class="host-row"><label class="btn sm" for="inFile">选择 .html 文件</label><input type="file" id="inFile" accept=".html,.htm,text/html" hidden><button type="button" class="btn sm ghost" id="inPasteBtn">粘贴代码</button>${e.work ? '<button type="button" class="btn sm ghost danger" id="inUnhost">移除托管</button>' : ''}</div>
         <span class="host-state" id="inHostState">${e.work ? `已托管${e.workBytes ? ' · ' + kb(e.workBytes) : ''}，打开时优先用托管的版本` : 'AI 做的单文件作品可以直接上传，一定能在房间里打开。最大 200 KB。'}</span>
@@ -3343,11 +3391,12 @@ function renderInspector(g) {
       <div class="field"><label>打开方式</label><div class="seg" id="inOpen"><button type="button" data-v="embed" aria-pressed="${e.open !== 'tab'}">站内窗口</button><button type="button" data-v="tab" aria-pressed="${e.open === 'tab'}">新标签页</button></div></div>
       <div class="field"><label>窗口形状</label><div class="seg" id="inSize">${[['tall', '竖版 · 适合工具'], ['wide', '横版 · 适合游戏']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${(e.size || (/game/.test(e.kind) ? 'wide' : 'tall')) === v}">${l}</button>`).join('')}</div></div>` : ''}
       ${builtin ? '' : `<div class="field"><label for="inDesc">一句话介绍</label><textarea class="input" id="inDesc" maxlength="60" rows="2">${esc(e.desc || '')}</textarea></div>`}
-      ${['shiguang', 'app', 'game', 'game2', 'web'].includes(e.kind) ? `<div class="divider"></div><p class="section-t">客户端下载（可选）</p><p class="mute small" style="margin:-4px 0 12px">访客打开作品时会看到适合自己设备的那一项。桌面安装包建议用 GitHub Releases 的 latest 固定链接，发新版不用改这里。</p>
+      ${['shiguang', 'app', 'game', 'game2', 'web'].includes(e.kind) ? `<div class="divider"></div><p class="section-t">客户端下载（可选）</p><p class="mute small u-mb3">访客打开作品时会看到适合自己设备的那一项。桌面安装包建议用 GitHub Releases 的 latest 固定链接，发新版不用改这里。</p>
       ${PLATFORMS.map(p => { const it = (e.downloads || {})[p.k] || {}; return `<div class="dl-edit"><label for="dl_${p.k}">${p.label}</label><input class="input" id="dl_${p.k}" inputmode="url" placeholder="${esc(p.ph)}" value="${esc(it.url || '')}"><input class="input" id="dlv_${p.k}" maxlength="12" placeholder="版本号" value="${esc(it.ver || '')}"></div>`; }).join('')}<span class="err" id="dlErr" hidden></span>` : ''}
     </form>`}`,
     e && !kept ? `<button type="submit" form="inForm" class="btn primary">保存绑定</button>${!builtin && !isChild ? '<button type="button" class="btn ghost" id="inUnbind">解除绑定</button>' : ''}` : '');
   const rot = $('#inRot'); if (rot) rot.addEventListener('click', () => rotateSelected());
+  const sdk = $('#inSdk'); if (sdk) sdk.addEventListener('click', openSdkGuide);
   const del = $('#inDel'); if (del) del.addEventListener('click', () => deleteSelected());
   const mk = $('#inMake'); if (mk) mk.addEventListener('click', () => { def.entry = { kind: 'web', title: nameOf(g), desc: '', url: '' }; renderInspector(g); });
   const ub = $('#inUnbind'); if (ub) ub.addEventListener('click', () => { delete def.entry; saveLayout(); rebuildFor(g); toast('已解除绑定，它又变回装饰了'); });
@@ -3425,6 +3474,7 @@ let layoutT = 0;
 function writeSite(patch) { const d = Object.assign(clone(CLOUD.site || {}), patch, { ownerId: CLOUD.me.id, updatedAt: Date.now() }); CLOUD.site = d; return cloudWrite('site/room302', d); }
 function saveLayout() {
   if (!S.room || !S.room.mine) return;
+  if (S.mode === 'build') setTimeout(renderPendingRow, 0);
   const items = clone(S.room.items);
   if (CLOUD.ready && S.room.uid && S.room.uid === CLOUD.me.id) {
     clearTimeout(layoutT); layoutT = setTimeout(() => { const d = clone(CLOUD.rooms.get(CLOUD.me.id) || {}); if (!d.no) return; d.items = items; d.updatedAt = Date.now(); CLOUD.rooms.set(CLOUD.me.id, d); cloudWrite(`rooms/${CLOUD.me.id}`, d).catch(() => {}); }, 700);
@@ -3434,8 +3484,8 @@ function saveLayout() {
   if (S.room.id.startsWith('custom-')) { CUSTOM[S.room.no] = clone(S.room); store.set('gebi3.custom', CUSTOM); } else store.set('gebi3.room.' + S.room.id, S.room.items);
 }
 function addFromCatalog(type) {
-  const meta = ITEMS[type];
-  const def = { uid: type + Date.now().toString(36), type, x: .6, z: 1.2, rot: 0 };
+  const meta = ITEMS[type], sp = freeSpot(S.room.items);
+  const def = { uid: type + Date.now().toString(36), type, x: sp.x, z: sp.z, rot: 0 };
   if (meta.entry) def.entry = clone(meta.entry);
   clampDef(def); S.room.items.push(def);
   const g = placeItem(def); saveLayout(); selectItem(g);
@@ -3510,6 +3560,7 @@ function syncChrome() {
   const on = modesEl.querySelector('[aria-pressed="true"]');
   if (on) { thumb.style.left = on.offsetLeft + 'px'; thumb.style.width = on.offsetWidth + 'px'; }
   if (S.view === 'globe') {
+    syncPocketBtn();
     $('#plateNo').textContent = RESIDENTS.length;
     $('#plateName').textContent = '地球 · 隔壁社区';
     $('#plateSub').textContent = `${RESIDENTS.length} 户已入住 · 实时昼夜`;
@@ -3518,6 +3569,7 @@ function syncChrome() {
     const mr = CLOUD.ready ? myResident() : RESIDENTS.find(r => r.preset === 'mine');
     $('#goMine').textContent = mr ? `回到我的房间 · ${mr.city} ${mr.no}` : `去 302 零点酒吧串门`;
     $('#roleNote').hidden = !(CLOUD.ready && !canPost());
+    if (CLOUD.ready && !canPost()) $('#roleNote').innerHTML = VIEWER_NOTE;
     syncThemeBtn();
   } else if (S.room) {
     const sky = S.dyn && S.dyn.sky;
@@ -3536,8 +3588,12 @@ function syncChrome() {
   if (S.view === 'room' && CLOUD.ready && rk) { $('#stVisit').textContent = roomVisitors(rk).length; $('#stLike').parentElement.hidden = true; $('#stDemo').hidden = true; $('#stVisitLbl').textContent = '来过的人'; }
   else { $('#stLike').parentElement.hidden = false; $('#stDemo').hidden = false; $('#stVisitLbl').textContent = '今日访客'; }
   $('#buildbar').hidden = !(S.mode === 'build' && S.view === 'room');
-  $('#ctlHint').hidden = !(S.view === 'room' && S.mode === 'visit');
-  $('#joy').hidden = !(S.view === 'room' && S.mode === 'visit' && matchMedia('(pointer: coarse)').matches);
+  const touch = matchMedia('(pointer: coarse)').matches;
+  $('#ctlHint').hidden = !(S.view === 'room' && S.mode === 'visit') || touch;   // 触屏上没有键盘，不显示 WASD / F
+  $('#joy').hidden = !(S.view === 'room' && S.mode === 'visit' && touch);
+  $('#bbHint').textContent = touch ? '点一件放进房间 · 按住拖动挪位置 · 选中后可旋转、删除、绑定作品' : '点一件放进房间 · 拖动挪位置 · R 旋转 · Delete 删除 · 任何物件都能绑定作品';
+  const cb = $('#cardBtn'); if (cb) { cb.hidden = !(S.view === 'room' && S.room && S.mode === 'visit'); cb.querySelector('span').textContent = S.room && S.room.mine ? '我的名片' : '关于房主'; }
+  if (S.mode === 'build') renderPendingRow();
   renderGuide();
   syncDock();
 }
@@ -3602,7 +3658,7 @@ $('#pickAddr').addEventListener('click', () => {
 /* ---------- 收藏与改编 ---------- */
 const CURATE_NO = ['agent', 'guestbook', 'door', 'view', 'music'];
 function originHTML(e) { return e && e.from && residentOfKey(e.from.room) ? `<button type="button" class="btn ghost" data-act="author">去 ${esc(e.from.by || 'TA')} 的房间</button>` : ''; }
-function curateOK(e) { return !!(e && !CURATE_NO.includes(e.kind) && S.room && !S.room.mine && S.view === 'room'); }
+function curateOK(e) { return !!(e && !CURATE_NO.includes(e.kind) && S.room && !S.room.mine && S.view === 'room' && embedSource(e)); }
 function curateHTML(e) {
   let h = '';
   if (curateOK(e)) h += '<button type="button" class="btn" data-act="collect">☆ 收藏到我的房间</button><button type="button" class="btn" data-act="adapt">改编一份</button>';
@@ -3614,8 +3670,8 @@ function srcCtx() {
 }
 function curateGate() {
   if (CLOUD.ready) {
-    if (!canPost()) { toast('你现在只能参观：收藏需要房主把你设为“参与者”'); return false; }
-    if (!myRoomKey()) { toast('先在地球上选址入住，收藏的东西才有地方摆'); return false; }
+    if (!canPost()) { toast('改编需要参与者权限。可以先点“收藏”，放进你的口袋'); return false; }
+    if (!myRoomKey()) { toast('改编要先有自己的房间。可以先点“收藏”放进口袋，入住后一起摆进去', 3600); return false; }
   }
   return true;
 }
@@ -3657,10 +3713,12 @@ async function addToMyRoom(make, dup) {
   const def = make(items); items.push(def); store.set('gebi3.room.mine', items); return def;
 }
 async function collectEntry(e, ctx0) {
-  if (!e || !curateGate()) return;
+  if (!e) return;
   const ctx = ctx0 || srcCtx();
   const copy = clone(e); copy.from = mkFrom(e, ctx, false);
   const ent = cleanEntry(copy, null); if (!ent) return;
+  // 没有房间、或者只能参观的人：先放进口袋，不再挡在门外
+  if (CLOUD.ready && (!canPost() || !myRoomKey())) { pocketAdd(ent, ctx); return; }
   const r = await addToMyRoom(items => { const sp = freeSpot(items); return { uid: 'k' + Date.now().toString(36), type: 'keepsake', x: sp.x, z: sp.z, rot: 0, entry: ent }; },
     i => i.type === 'keepsake' && i.entry && i.entry.from && i.entry.from.room === ctx.key && i.entry.title === ent.title);
   if (r === 'dup') { toast('这件已经在你的房间里了'); return; }
@@ -3705,15 +3763,20 @@ const THEMES = [
   { t: '下雨天的图书馆', b: '雨声、台灯、书架：布置一间适合慢慢读、慢慢写代码的房间。', c: '#9d8cff' },
   { t: '给陌生人的一间客房', b: '假设明天有位陌生的开发者要来借住：你想让他先看到哪三样东西？', c: '#7ee0a1' }
 ];
-const THEME_REF = new Date(2026, 9, 19);
+// 主题周统一按北京时间（UTC+8）切换：周一 00:00 开始，周日 24:00 结束，全世界同一个时刻
+const THEME_TZ = 8, THEME_REF = Date.UTC(2026, 9, 19) - THEME_TZ * 3600e3;
 function themeFor(idx) { const n = THEMES.length, t = THEMES[((idx % n) + n) % n]; return { id: 'w' + idx, idx, title: t.t, brief: t.b, c: t.c }; }
 function curTheme() {
-  const now = new Date(), d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  const th = themeFor(Math.round((d - THEME_REF) / (7 * 864e5)));
-  th.start = new Date(d); th.end = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7);
+  const now = Date.now(), idx = Math.floor((now - THEME_REF) / (7 * 864e5));
+  const th = themeFor(idx);
+  th.start = new Date(THEME_REF + idx * 7 * 864e5); th.end = new Date(THEME_REF + (idx + 1) * 7 * 864e5);
   th.left = Math.max(1, Math.ceil((th.end - now) / 864e5));
   return th;
+}
+function themeEndText(th) {
+  const e = th.end, local = `${e.getMonth() + 1}月${e.getDate()}日 ${String(e.getHours()).padStart(2, '0')}:${String(e.getMinutes()).padStart(2, '0')}`;
+  const off = -new Date().getTimezoneOffset() / 60;
+  return off === THEME_TZ ? '北京时间周日 24:00 结束并归档' : `北京时间周日 24:00 结束 · 你的时间 ${local}`;
 }
 const TH = { cur: curTheme(), on: false, local: store.get('gebi.tw', []) };
 const DEMO_TW_NOW = ['204', '303', '101', '106', '108', '110', '202'], DEMO_TW_PAST = ['204', '101', '301', '202', '105'];
@@ -3783,12 +3846,12 @@ function openThemePanel(keep) {
   const li = r => { const i = residentInfo(r); return `<li><button type="button" class="nb" data-no="${esc(r.no)}"><i style="--c:${residentColor(r)}"></i>${esc(i.mine && !i.custom ? '你的房间' : i.handle)}<span>${esc(i.city)} · ${esc(i.name || '')}</span></button></li>`; };
   const arch = themeArchive();
   setPanel(`主题周 · 第 ${th.idx + 1} 期`, th.title, `
-    <p style="margin:0 0 12px;line-height:1.7">${esc(th.brief)}</p>
-    <div class="th-meta"><span class="tag" style="background:${th.c}22;color:${th.c}">还剩 ${th.left} 天</span><span class="tag dim">周日 24:00 结束并归档</span></div>
+    <p class="u-mb3 u-loose">${esc(th.brief)}</p>
+    <div class="th-meta"><span class="tag theme" style="--tc:${th.c}">还剩 ${th.left} 天</span><span class="tag dim">${esc(themeEndText(th))}</span></div>
     <div class="divider"></div>
     <p class="section-t">已亮灯的房间 · ${mem.length}</p>
-    ${mem.length ? `<ul class="nblist">${mem.map(li).join('')}</ul>` : '<p class="mute small" style="margin:0">还没有人参加，做第一个。</p>'}
-    <p class="mute small" style="margin:10px 0 0">亮灯的房间会在地球上变成主题色，其余的暗下去。其中一部分是演示数据。</p>
+    ${mem.length ? `<ul class="nblist">${mem.map(li).join('')}</ul>` : '<p class="mute small u-m0">还没有人参加，做第一个。</p>'}
+    <p class="mute small u-mt3">亮灯的房间会在地球上变成主题色，其余的暗下去。其中一部分是演示数据。</p>
     ${arch.length ? `<div class="divider"></div><p class="section-t">往期归档</p><ul class="th-arch">${arch.map(a => `<li><b>${esc(a.t)}</b><span>${a.rs.length} 间房 · ${a.rs.slice(0, 3).map(r => esc(residentInfo(r).handle)).join('、')}${a.rs.length > 3 ? ' 等' : ''}</span></li>`).join('')}</ul>` : ''}`,
     `${joined ? `<button type="button" class="btn primary" id="thGo">去我的房间布置</button>` : `<button type="button" class="btn primary" id="thJoin">让我的房间亮灯参加</button>`}<button type="button" class="btn ghost" id="thOff">${TH.on ? '关闭主题地图' : '打开主题地图'}</button>`);
   pBody.querySelectorAll('.nb').forEach(x => x.addEventListener('click', () => { const o = RESIDENTS.find(y => y.no === x.dataset.no); if (o) openResident(o); }));
@@ -3830,9 +3893,12 @@ function collectFeed() {
     else if (r.preset) list = flatEntries(ROOM_PRESETS[r.preset].items);
     else if (r.custom && CUSTOM[r.no]) list = flatEntries(CUSTOM[r.no].items);
     else if (r.works) list = r.works.map(w => ({ kind: w[1], title: w[0], desc: r.tagline || '' }));
-    list.forEach(e => out.push({ r, key: key || ('demo:' + r.no), e, handle: info.mine && !info.custom ? '你' : info.handle, city: info.city, demo: !!info.demo, real: !!r.real || r.preset === 'mine', mine: !!info.mine, at: r.real ? ((CLOUD.rooms.get(r.key) || {}).updatedAt || 0) : 0, theme: inTheme(r, TH.cur.id) }));
+    const doc = r.real ? (CLOUD.rooms.get(r.key) || {}) : {}, fresh = r.real && Date.now() - (+doc.createdAt || 0) < 7 * 864e5;
+    list.forEach(e => out.push({ r, key: key || ('demo:' + r.no), e, handle: info.mine && !info.custom ? '你' : info.handle, city: info.city, demo: !!info.demo, real: !!r.real || r.preset === 'mine', mine: !!info.mine, at: r.real ? (+doc.updatedAt || 0) : 0, theme: inTheme(r, TH.cur.id), playable: !!embedSource(e), fresh }));
   });
-  return out.sort((a, b) => (b.at - a.at) || (hash(a.e.title + a.key) % 97) - (hash(b.e.title + b.key) % 97));
+  // 能玩的排前面；新邻居（7 天内入住）能玩的作品再往前；还没上传的真实作品沉底
+  const rank = it => (it.real && !it.playable ? 2 : 0) - (it.fresh && it.playable ? 1 : 0);
+  return out.sort((a, b) => (rank(a) - rank(b)) || (b.at - a.at) || (hash(a.e.title + a.key) % 97) - (hash(b.e.title + b.key) % 97));
 }
 function ofPass(it) {
   if (OF.filter === 'all') return true;
@@ -3852,7 +3918,7 @@ function ensureObjFeed() {
     const card = b.closest('.oc'), it = OF.items[+card.dataset.i]; if (!it) return;
     const a = b.dataset.a;
     if (a === 'play') openQuickPlay(it);
-    else if (a === 'go') { closeObjFeed(); if (!S.busy) diveInto(it.r); }
+    else if (a === 'go') { closeObjFeed(); if (!S.busy) { S.via = 'feed'; diveInto(it.r); } }
     else if (a === 'collect') collectEntry(it.e, { key: it.key, by: it.handle === '你' ? '邻居' : it.handle });
     else if (a === 'adapt') adaptEntry(it.e, { key: it.key, by: it.handle === '你' ? '邻居' : it.handle });
     else if (a === 'say') { const f = card.querySelector('.oc-say'); f.hidden = !f.hidden; if (!f.hidden) f.querySelector('input').focus(); }
@@ -3868,15 +3934,17 @@ function renderObjFeed() {
   const all = collectFeed(); OF.items = all.filter(ofPass);
   $('#ofFilters').innerHTML = OF_FILTERS.map(([k, l]) => `<button type="button" data-f="${k}" role="tab" aria-selected="${OF.filter === k}">${l}${k === 'theme' ? ` · ${all.filter(x => x.theme).length}` : ''}</button>`).join('');
   const grid = $('#ofGrid'); grid.innerHTML = '';
-  if (!OF.items.length) { grid.innerHTML = '<p class="mute" style="grid-column:1/-1;text-align:center;padding:48px 0">这个分类下暂时没有作品。</p>'; return; }
+  if (!OF.items.length) { grid.innerHTML = '<p class="mute u-span-all u-center u-pad-xl">这个分类下暂时没有作品。</p>'; return; }
   OF.items.forEach((it, i) => {
     const card = document.createElement('article'); card.className = 'oc'; card.dataset.i = i;
     const cv = kioskCanvas(it.e, 384, 232); cv.className = 'oc-cover'; cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', it.e.title || '作品'); card.appendChild(cv);
     const canSay = CLOUD.ready && it.real && canPost() && !it.mine;
+    const waiting = it.real && !it.playable, canCurate = !it.mine && it.playable;
+    if (waiting) card.classList.add('waiting');
     card.insertAdjacentHTML('beforeend', `<div class="oc-b"><div class="oc-t"><b>${esc(it.e.title || '未命名')}</b><span class="tag ${/game/.test(it.e.kind) ? 'pink' : ''}">${esc(KIND_LABEL[it.e.kind] || '作品')}</span></div>
-      <p>${esc(it.e.desc || '房主还没写介绍')}</p>
-      <div class="oc-m"><i style="--c:${residentColor(it.r)}"></i><span>${esc(it.handle)} · ${esc(it.city || '')}</span>${it.theme ? '<span class="tag" style="background:rgba(255,180,84,.14)">本周主题</span>' : ''}${it.e.from ? `<span class="tag pink">${it.e.from.adapted ? '改编' : '收藏'}自 ${esc(it.e.from.by || '邻居')}</span>` : ''}${it.demo ? '<span class="tag dim">演示</span>' : ''}</div>
-      <div class="oc-a"><button type="button" class="btn sm primary" data-a="play">试玩</button><button type="button" class="btn sm" data-a="go">进房间</button>${it.mine ? '' : '<button type="button" class="btn sm" data-a="collect">☆ 收藏</button><button type="button" class="btn sm ghost" data-a="adapt">改编</button>'}${canSay ? '<button type="button" class="btn sm ghost" data-a="say">说一句</button>' : ''}</div>
+      <p>${esc(waiting ? '作者还没上传这件作品，先去 TA 的房间看看别的。' : it.e.desc || '房主还没写介绍')}</p>
+      <div class="oc-m"><i style="--c:${residentColor(it.r)}"></i><span>${esc(it.handle)} · ${esc(it.city || '')}</span>${it.fresh ? '<span class="tag ok">新邻居</span>' : ''}${it.theme ? '<span class="tag">本周主题</span>' : ''}${it.e.from ? `<span class="tag pink">${it.e.from.adapted ? '改编' : '收藏'}自 ${esc(it.e.from.by || '邻居')}</span>` : ''}${it.demo ? '<span class="tag dim">演示</span>' : ''}${waiting ? '<span class="tag dim">等作者上传</span>' : ''}</div>
+      <div class="oc-a">${waiting ? '' : '<button type="button" class="btn sm primary" data-a="play">试玩</button>'}<button type="button" class="btn sm${waiting ? ' primary' : ''}" data-a="go">进房间</button>${canCurate ? '<button type="button" class="btn sm" data-a="collect">☆ 收藏</button><button type="button" class="btn sm ghost" data-a="adapt">改编</button>' : ''}${canSay ? '<button type="button" class="btn sm ghost" data-a="say">说一句</button>' : ''}</div>
       ${canSay ? '<form class="oc-say" hidden><input class="input" maxlength="120" placeholder="给作者留一句话，TA 会在动态里看到" aria-label="给作者留言"><button class="btn sm primary" type="submit">发送</button></form>' : ''}</div>`);
     grid.appendChild(card);
   });
@@ -3903,23 +3971,31 @@ function ensureQP() {
     if (ev.target === el) return closeQuickPlay();
     const b = ev.target.closest('[data-q]'); if (!b || !QP.it) return; const it = QP.it;
     if (b.dataset.q === 'close') closeQuickPlay();
-    else if (b.dataset.q === 'go') { closeQuickPlay(); closeObjFeed(); if (!S.busy) diveInto(it.r); }
+    else if (b.dataset.q === 'go') { if (!it.r) { toast('作者的房间暂时找不到'); return; } closeQuickPlay(); closeObjFeed(); closePanel(true); if (S.busy) return; S.via = 'feed'; if (S.view === 'room') goRoomFromRoom(it.r); else diveInto(it.r); }
     else if (b.dataset.q === 'collect') collectEntry(it.e, { key: it.key, by: it.handle === '你' ? '邻居' : it.handle });
   });
 }
 async function openQuickPlay(it) {
   ensureQP(); const e = it.e; QP.it = it;
-  const src = embedSource(e) || { srcdoc: placeholderDoc(e), external: false, demo: true };
   const body = QP.el.querySelector('.qp-body'); body.innerHTML = '';
   QP.el.querySelector('.qp-t b').textContent = e.title || '作品';
-  QP.el.querySelector('.qp-t span').textContent = `${it.handle} · ${it.city || ''}${src.demo ? ' · 演示占位' : src.hosted ? ' · 隔壁托管' : ''}`;
+  const real = embedSource(e);
+  if (!real && it.real) {
+    // 真实住户还没上传：不放占位动画，直接说清楚
+    QP.el.querySelector('.qp-t span').textContent = `${it.handle} · ${it.city || ''} · 等作者上传`;
+    QP.el.querySelector('[data-q="tab"]').hidden = true; QP.el.querySelector('[data-q="collect"]').hidden = true;
+    body.innerHTML = `<div class="empty"><b>作者还没上传「${esc(e.title || '这件作品')}」</b><p>房间里已经给它留了位置。去 ${esc(it.handle)} 的房间看看别的作品，或者给 TA 留一句话催一催。</p></div>`;
+    QP.el.hidden = false; return;
+  }
+  const src = real || { srcdoc: placeholderDoc(e), external: false, demo: true };
+  QP.el.querySelector('.qp-t span').textContent = `${it.handle} · ${it.city || ''}${src.demo ? ' · 演示房间的占位作品' : src.hosted ? ' · 隔壁托管' : ''}`;
   const tab = QP.el.querySelector('[data-q="tab"]'); tab.hidden = !src.external; if (src.external) tab.href = src.src;
-  QP.el.querySelector('[data-q="collect"]').hidden = !!it.mine;
+  QP.el.querySelector('[data-q="collect"]').hidden = !!it.mine || !!src.demo;
   const f = document.createElement('iframe'); f.title = e.title || '作品';
   f.setAttribute('sandbox', src.external ? 'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-pointer-lock' : 'allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups');
   f.setAttribute('allow', 'fullscreen; gamepad; clipboard-write; autoplay'); f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
   body.appendChild(f); QP.el.hidden = false;
-  if (src.hosted) { const html = await loadWork(src.hosted); if (QP.it !== it) return; if (!html) { body.innerHTML = '<p class="mute" style="padding:40px;text-align:center">作品文件没找到，房主可能刚刚移除了它。</p>'; return; } f.srcdoc = html; }
+  if (src.hosted) { const html = await loadWork(src.hosted); if (QP.it !== it) return; if (!html) { body.innerHTML = '<p class="mute u-center u-pad-xl">作品文件没找到，房主可能刚刚移除了它。</p>'; return; } f.srcdoc = html; }
   else if (src.srcdoc) f.srcdoc = src.srcdoc; else f.src = src.src;
   if (it.real && !it.key.startsWith('demo:')) recordVisit(it.key, '试玩 ' + String(e.title || '').slice(0, 20));
 }
@@ -3990,6 +4066,276 @@ function renderRelay() {
     if (ok) { S.relayMode = null; relayLog(mode === 'appt' ? `已转达：想约老板「${w}」聊一聊，贴在了黑板上` : '已转达：你的话贴到了后墙黑板'); const m = { role: 'bit', text: mode === 'appt' ? '约好啦，我把时间和事由贴给老板了。他看到会回复你，别忘了回来看“动态”。' : '收到，已经贴到黑板上。老板回复后你会在“动态”里看到。' }; S.chat.log.push(m); renderChat(); renderRelay(); }
   }; setTimeout(() => { const i = $('#rlText'); if (i && !isNarrow()) i.focus({ preventScroll: true }); }, 30); }
 }
+
+
+/* ============================================================
+   v6 · 体验修复（来自模拟用户体验报告）
+   口袋 / 房间名片 / 待上传清单 / SDK 说明 / 冷启动 / 来源统计
+   ============================================================ */
+
+/* ---------- 口袋：没有房间、只能参观的人也能收藏 ---------- */
+const POCKET = { items: store.get('gebi.pocket', []), cloud: false };
+const POCKET_MAX = 40;
+function pocketList() { return POCKET.items; }
+function pocketPath() { return CLOUD.ready ? `data/users/${CLOUD.me.id}/pocket` : null; }
+function cleanPocket(list) {
+  return (Array.isArray(list) ? list : []).slice(-POCKET_MAX).map(p => {
+    if (!p || typeof p !== 'object' || typeof p.key !== 'string' || !KEY_RE.test(p.key)) return null;
+    const e = cleanEntry(p.e, null); if (!e) return null;
+    return { e, key: p.key, by: String(p.by || '').slice(0, 20), at: +p.at || 0 };
+  }).filter(Boolean);
+}
+async function loadPocket() {
+  POCKET.items = cleanPocket(store.get('gebi.pocket', []));
+  if (!CLOUD.ready || !canPost()) { syncPocketBtn(); return; }
+  try {
+    const s = await CLOUD.db.doc(pocketPath()).get();
+    const remote = s.exists ? cleanPocket(s.data().items) : [];
+    const merged = remote.concat(POCKET.items.filter(p => !remote.some(q => q.key === p.key && q.e.title === p.e.title)));
+    POCKET.items = merged.slice(-POCKET_MAX); POCKET.cloud = true;
+    if (merged.length !== remote.length) { await CLOUD.db.doc(pocketPath()).set({ items: POCKET.items, updatedAt: Date.now() }); }
+    store.set('gebi.pocket', []);
+  } catch (e) { /* 读不到就只用本机的口袋 */ }
+  syncPocketBtn();
+}
+function savePocket() {
+  if (POCKET.cloud && CLOUD.ready && canPost()) cloudWrite(pocketPath(), { items: POCKET.items, updatedAt: Date.now() }).catch(() => {});
+  else store.set('gebi.pocket', POCKET.items);
+  syncPocketBtn();
+}
+function pocketAdd(ent, ctx) {
+  if (POCKET.items.some(p => p.key === ctx.key && p.e.title === ent.title)) { toast('这件已经在你的口袋里了'); return; }
+  POCKET.items.push({ e: ent, key: ctx.key, by: ctx.by, at: Date.now() });
+  if (POCKET.items.length > POCKET_MAX) POCKET.items.shift();
+  savePocket();
+  if (!ctx.key.startsWith('demo:')) recordVisit(ctx.key, '收藏 ' + String(ent.title).slice(0, 20));
+  const where = POCKET.cloud ? '' : '（只存在这台设备上）';
+  toast(canPost() ? `已放进口袋${where}：现在 ${POCKET.items.length} 件。入住后可以一键摆进房间` : `已放进这台设备上的口袋，现在 ${POCKET.items.length} 件`, 3800);
+  if (OF.el && !OF.el.hidden) renderObjFeed();
+}
+function pocketClear() { POCKET.items = []; savePocket(); }
+function syncPocketBtn() {
+  const b = $('#pocketBtn'); if (!b) return;
+  const n = POCKET.items.length; b.hidden = !n; b.querySelector('span').textContent = `口袋 · ${n}`;
+}
+function pocketIt(p) {
+  const r = residentOfKey(p.key);
+  return { r, key: p.key, e: p.e, handle: p.by || '邻居', city: r ? residentInfo(r).city : '', real: !p.key.startsWith('demo:'), mine: true, playable: !!embedSource(p.e) };
+}
+function openPocket() {
+  if (S.panel) closePanel(true);
+  S.panel = { kind: 'pocket' }; if (S.view === 'globe') G.shiftGoal = isNarrow() ? 0 : -200;
+  const list = POCKET.items, room = CLOUD.ready ? myRoomKey() : null;
+  const rows = list.slice().reverse().map((p, i) => `<li class="pk"><div class="grow"><b>${esc(p.e.title || '作品')}</b><small>${esc(p.by || '邻居')} · ${esc(KIND_LABEL[p.e.kind] || '作品')} · ${esc(ago(p.at))}</small></div><div class="pk-a">${embedSource(p.e) ? `<button type="button" class="btn sm" data-p="play" data-i="${list.length - 1 - i}">试玩</button>` : ''}<button type="button" class="btn sm ghost" data-p="del" data-i="${list.length - 1 - i}" aria-label="从口袋移除">移除</button></div></li>`).join('');
+  const foot = !list.length ? '' : room && canPost() ? `<button type="button" class="btn primary" id="pkPlace">全部摆进我的房间</button>` : canPost() ? `<button type="button" class="btn primary" id="pkPick">选址入住，把它们摆进去</button>` : '';
+  setPanel('我的口袋', `收藏了 ${list.length} 件`, `
+    <p class="mute small u-mb4">${POCKET.cloud ? '口袋跟着你的账号走，换设备也在。' : '口袋现在只存在这台设备上。'}${room ? '' : '有了房间以后，可以一键把它们摆成展台。'}</p>
+    ${list.length ? `<ul class="pk-list">${rows}</ul>` : '<p class="mute">口袋是空的。在别人的房间或物件流里点“☆ 收藏”，作品会先放进这里。</p>'}
+    ${CLOUD.ready && !canPost() ? `<div class="callout u-mt4">${VIEWER_NOTE}</div>` : ''}`, foot);
+  pBody.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => {
+    const p = POCKET.items[+b.dataset.i]; if (!p) return;
+    if (b.dataset.p === 'del') { POCKET.items.splice(+b.dataset.i, 1); savePocket(); openPocket(); }
+    else openQuickPlay(pocketIt(p));
+  }));
+  const pl = $('#pkPlace'); if (pl) pl.addEventListener('click', async () => {
+    pl.disabled = true; let n = 0;
+    for (const p of POCKET.items.slice()) {
+      const r = await addToMyRoom(items => { const sp = freeSpot(items); return { uid: 'k' + Date.now().toString(36) + n, type: 'keepsake', x: sp.x, z: sp.z, rot: 0, entry: p.e }; },
+        i => i.type === 'keepsake' && i.entry && i.entry.from && i.entry.from.room === p.key && i.entry.title === p.e.title);
+      if (r) n++;
+    }
+    pocketClear(); closePanel(); toast(`摆好了 ${n} 件展台，署名都保留着`, 3200);
+  });
+  const pk = $('#pkPick'); if (pk) pk.addEventListener('click', () => { closePanel(); if (S.view === 'room') exitToGlobe().then(() => $('#pickAddr').click()); else $('#pickAddr').click(); });
+}
+
+/* ---------- 查看者与分享：说清楚谁能做什么 ---------- */
+const VIEWER_NOTE = '你现在是<b>查看者</b>：能逛、能试玩，收藏会放进这台设备上的口袋。留言、入住和留下来访记录需要“参与者”权限，可以请把链接发给你的人帮你开通。';
+function shareAccessHTML() {
+  if (!CLOUD.ready) return '<div class="callout">离线原型：这个链接只在线上版本里有效。</div>';
+  if (CLOUD.isOwner) return `<div class="callout"><b>谁能打开这个链接</b>由页面右上角的分享菜单决定。建议把同组织的成员设为“可参与”：他们能留言、收藏，来访也会被记录。组织外的人用公开链接打开时只能参观：能逛、能试玩，收藏只存在他们自己的设备上。</div>`;
+  return `<div class="callout"><b>谁能打开这个链接</b>${S.room && S.room.mine ? '你的房间' : '这间房'}住在 ${esc(ownerHandle302())} 托管的隔壁页面里。陌生人能不能打开，取决于页面所有者是否开放了公开访问；能打开的人至少可以逛和试玩。</div>`;
+}
+
+/* ---------- 房间名片 ---------- */
+const OPEN_FOR = { '': '', job: '在看工作机会', collab: '欢迎合作', both: '在看机会 · 欢迎合作' };
+const DEFAULT_CARD_302 = { bio: '做「拾光」待办 App 和几个网页小游戏。电竞房里开了间小酒吧，Bit 替我招呼客人。', stack: ['Three.js', 'Electron', '浏览器扩展'], github: '', site: '', contact: '', open: 'collab' };
+function cleanCard(c) {
+  if (!c || typeof c !== 'object') return null;
+  const url = v => validUrl(v) ? String(v).trim().slice(0, 200) : '';
+  const o = { bio: String(c.bio || '').slice(0, 80), stack: (Array.isArray(c.stack) ? c.stack : []).map(t => String(t || '').trim().slice(0, 14)).filter(Boolean).slice(0, 5), github: url(c.github), site: url(c.site), contact: String(c.contact || '').slice(0, 60), open: OPEN_FOR[c.open] !== undefined ? c.open : '' };
+  return o.bio || o.stack.length || o.github || o.site || o.contact || o.open ? o : null;
+}
+function cardOf(r) {
+  if (!r) return null;
+  if (r.real) return cleanCard((CLOUD.rooms.get(r.key) || {}).card);
+  if (r.preset === 'mine') return cleanCard(CLOUD.ready ? (CLOUD.site && CLOUD.site.card) : store.get('gebi.card302', null)) || cleanCard(DEFAULT_CARD_302);
+  if (r.custom) return cleanCard(CUSTOM[r.no] && CUSTOM[r.no].card);
+  return null;   // 演示住户的介绍和标签已经显示在面板上，不再生成名片
+}
+function cardHTML(r, opts = {}) {
+  const c = cardOf(r), mine = residentInfo(r).mine;
+  if (!c && !mine) return opts.quiet || !(r.real || r.preset === 'mine' || r.custom) ? '' : '<p class="mute small u-mb3">房主还没写名片。</p>';
+  if (!c) return mine ? `<div class="rcard empty"><p>还没有名片。写一句介绍、技术栈和联系方式，来看作品的人才知道你是谁、怎么找你。</p><button type="button" class="btn sm" data-card="edit">写名片</button></div>` : '';
+  const host = u => { try { return new URL(u).host.replace(/^www\./, ''); } catch (e) { return u; } };
+  const contact = c.contact ? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.contact) ? `<a href="mailto:${esc(c.contact)}">${esc(c.contact)}</a>` : esc(c.contact)) : '';
+  return `<div class="rcard">${c.open ? `<span class="tag ok">${esc(OPEN_FOR[c.open])}</span>` : ''}
+    ${c.bio ? `<p class="rc-bio">${esc(c.bio)}</p>` : ''}
+    ${c.stack.length ? `<div class="chiprow">${c.stack.map(t => `<span class="tag dim">${esc(t)}</span>`).join('')}</div>` : ''}
+    ${c.github || c.site || contact ? `<dl class="kv">${c.github ? `<dt>GitHub</dt><dd><a href="${esc(c.github)}" target="_blank" rel="noopener noreferrer">${esc(host(c.github) + new URL(c.github).pathname.replace(/\/$/, ''))}</a></dd>` : ''}${c.site ? `<dt>主页</dt><dd><a href="${esc(c.site)}" target="_blank" rel="noopener noreferrer">${esc(host(c.site))}</a></dd>` : ''}${contact ? `<dt>联系</dt><dd>${contact}</dd>` : ''}</dl>` : ''}
+    ${c.demo ? '<p class="mute small u-mt2">演示住户的名片由介绍和标签生成。</p>' : ''}
+    ${mine && !opts.noEdit ? '<button type="button" class="btn sm ghost" data-card="edit">编辑名片</button>' : ''}</div>`;
+}
+function bindCard(root) { root.querySelectorAll('[data-card="edit"]').forEach(b => b.addEventListener('click', () => openCardEditor(S.panel && S.panel.r || S.resident))); }
+function openCard() {
+  const r = S.resident; if (!r || S.view !== 'room') return;
+  beginPanel('card', null); S.panel.r = r;
+  const info = residentInfo(r), gb = findGroup('chalkboard');
+  setPanel(`名片 · ${info.no}`, info.mine && !info.custom ? '你的名片' : info.handle, `
+    <div class="unit-hero"><div class="plate-no">${esc(info.no)}</div><div><div class="u-strong">${esc(S.room.name)}</div><div class="mute small">${esc(info.city || '')} · 房主 ${esc(S.room.owner)}</div></div></div>
+    ${cardHTML(r)}
+    <div class="divider"></div>
+    <p class="section-t">房间里的作品</p><ul class="works">${(info.works || []).map(w => `<li><span>${esc(w[0])}</span><span class="tag ${w[1] === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[w[1]] || '作品')}</span></li>`).join('') || '<li class="mute">还没有作品</li>'}</ul>`,
+    !info.mine && gb ? `<button type="button" class="btn primary" id="cardMsg">给 TA 留言</button>` : '');
+  bindCard(pBody);
+  const m = $('#cardMsg'); if (m) m.addEventListener('click', () => activate(gb));
+}
+function openCardEditor(r) {
+  if (!r) return;
+  const c = cardOf(r) || {}, cur = c.demo ? {} : c;
+  if (S.panel) closePanel(true);
+  S.panel = { kind: 'cardEdit', r };
+  setPanel('房间名片', '编辑名片', `
+    <p class="mute small u-mb4">名片会出现在你的门牌、住户面板和分享出去的房间里。来看作品的招聘方和合作者最先看这里。</p>
+    <form id="cardForm">
+      <div class="field"><label for="cdBio">一句话介绍</label><textarea class="input" id="cdBio" maxlength="80" rows="2" placeholder="比如：用 AI 写小工具的前端，喜欢做像素风小游戏">${esc(cur.bio || '')}</textarea></div>
+      <div class="field"><label for="cdStack">技术栈（用逗号分开，最多 5 个）</label><input class="input" id="cdStack" maxlength="80" value="${esc((cur.stack || []).join('，'))}" placeholder="Three.js，React，Python"></div>
+      <div class="field"><label for="cdGh">GitHub</label><input class="input" id="cdGh" inputmode="url" value="${esc(cur.github || '')}" placeholder="https://github.com/你的账号"></div>
+      <div class="field"><label for="cdSite">个人主页（选填）</label><input class="input" id="cdSite" inputmode="url" value="${esc(cur.site || '')}" placeholder="https://"></div>
+      <div class="field"><label for="cdContact">公开的联系方式（选填）</label><input class="input" id="cdContact" maxlength="60" value="${esc(cur.contact || '')}" placeholder="邮箱或“微信 / 即刻：xxx”"><span class="hint-s">所有能打开隔壁的人都看得到，只填你愿意公开的。</span></div>
+      <div class="field"><label>现在的状态</label><div class="seg" id="cdOpen">${Object.entries(OPEN_FOR).map(([k, v]) => `<button type="button" data-v="${k}" aria-pressed="${(cur.open || '') === k}">${v || '不显示'}</button>`).join('')}</div></div>
+      <span class="err" id="cdErr" hidden></span>
+    </form>`, `<button type="submit" form="cardForm" class="btn primary">保存名片</button>`);
+  let open = cur.open || '';
+  $('#cdOpen').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; open = b.dataset.v; $('#cdOpen').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+  $('#cardForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const err = $('#cdErr'), gh = $('#cdGh').value.trim(), site = $('#cdSite').value.trim();
+    if ((gh && !validUrl(gh)) || (site && !validUrl(site))) { err.textContent = '链接需要以 https:// 开头。'; err.hidden = false; return; }
+    const card = cleanCard({ bio: $('#cdBio').value.trim(), stack: $('#cdStack').value.split(/[,，、;；]+/), github: gh, site, contact: $('#cdContact').value.trim(), open }) || {};
+    try { await saveCard(r, card); } catch (e) { err.textContent = '没保存成功，稍后再试。'; err.hidden = false; return; }
+    toast('名片已保存'); if (S.view === 'room') openCard(); else openResident(r);
+  });
+}
+async function saveCard(r, card) {
+  if (r.preset === 'mine') { if (CLOUD.ready && CLOUD.isOwner) await writeSite({ card }); else store.set('gebi.card302', card); return; }
+  if (r.real) { const d = clone(CLOUD.rooms.get(r.key) || {}); if (!d.no) throw new Error('no room'); d.card = card; d.updatedAt = Date.now(); CLOUD.rooms.set(r.key, d); await cloudWrite(`rooms/${r.key}`, d); return; }
+  if (r.custom && CUSTOM[r.no]) { CUSTOM[r.no].card = card; store.set('gebi3.custom', CUSTOM); }
+}
+
+/* ---------- 装修：待上传清单 ---------- */
+function pendingWorks() {
+  if (!S.room || !S.roomRoot) return [];
+  return S.room.items.filter(d => d.entry && BIND_KINDS.includes(d.entry.kind) && !validUrl(d.entry.url) && !d.entry.work && !d.entry.from).map(d => findGroup(d.uid)).filter(Boolean);
+}
+function renderPendingRow() {
+  const row = $('#pendingRow'); if (!row) return;
+  const list = S.room && S.room.mine ? pendingWorks() : [];
+  row.hidden = !list.length;
+  row.innerHTML = list.length ? `<span class="pr-l">待上传 · ${list.length}</span>${list.map(g => `<button type="button" class="pr-i" data-uid="${esc(g.userData.iid)}"><i></i>${esc(entryOf(g).title || nameOf(g))}</button>`).join('')}` : '';
+}
+
+/* ---------- 打开结果：用来量“作品成功打开的比例” ---------- */
+let openT = 0;
+function logOpen(key, outcome) {
+  if (!canPost() || !key || iOwnRoom(key) || key.startsWith('demo:')) return;
+  const uid = CLOUD.me.id, d = clone(CLOUD.visits.get(uid) || {});
+  d.log = d.log && typeof d.log === 'object' ? d.log : {};
+  const cur = d.log[key] || { n: 1, did: [], at: Date.now() };
+  cur.open = cur.open && typeof cur.open === 'object' ? cur.open : {};
+  cur.open[outcome] = (+cur.open[outcome] || 0) + 1; d.log[key] = cur; d.updatedAt = Date.now();
+  CLOUD.visits.set(uid, d);
+  clearTimeout(openT); openT = setTimeout(() => cloudWrite(`visits/${uid}`, CLOUD.visits.get(uid)), 1500);
+}
+
+/* ---------- Bit 给房主的问候：按待回复和最近 24 小时，而不是“是否已读” ---------- */
+function ownerGreeting(k) {
+  const u = myUpdates(), sum = u.count ? updatesSentence(u) : '', pend = CLOUD.ready ? pendingFor(k).length : 0;
+  const day = Date.now() - 864e5, me = CLOUD.me && CLOUD.me.id;
+  const v24 = CLOUD.ready ? roomVisitors(k).filter(v => v.at > day && v.uid !== me).length : 0;
+  const m24 = CLOUD.ready ? roomMessages(k).filter(m => m.at > day && m.author !== me && !m.reply).length : 0;
+  if (sum) return `老板回来啦！${sum}${pend ? `还有 ${pend} 条留言等你回复，` : ''}要不要打开访客簿看看？`;
+  if (pend) return `老板回来啦！有 ${pend} 条留言还没回复，访客在等。`;
+  if (v24 || m24) return `老板回来啦！过去 24 小时${v24 ? `有 ${v24} 位邻居来过` : ''}${v24 && m24 ? '，' : ''}${m24 ? `收到 ${m24} 条留言` : ''}，你都看过、也都回复了。`;
+  return '老板回来啦！这一天店里挺安静。去邻居家串个门，他们会顺着来访记录回访你。';
+}
+
+/* ---------- 新住户冷启动 ---------- */
+function coldStartHTML(key) {
+  const me = myResident(); if (!me) return '';
+  const near = nearestResidents(me.lat, me.lon, me.no, 3), joined = inTheme(me, TH.cur.id);
+  return `<div class="cold"><p class="section-t">Bit 的建议：先去串这三家</p><ul class="nblist">${near.map(x => { const i = residentInfo(x.r); return `<li><button type="button" class="nb" data-visit="${esc(x.r.no)}"><i style="--c:${residentColor(x.r)}"></i>${esc(i.handle)}<span>${esc(i.city)} · ${kmStr(x.km)}</span></button></li>`; }).join('')}</ul>
+    <div class="cold-a">${joined ? '' : `<button type="button" class="btn sm" data-cold="theme">参加本周主题「${esc(TH.cur.title)}」</button>`}<button type="button" class="btn sm ghost" data-cold="share">生成分享卡片</button></div></div><div class="divider"></div>`;
+}
+function bindColdStart(root) {
+  root.querySelectorAll('[data-visit]').forEach(b => b.addEventListener('click', () => {
+    const r = RESIDENTS.find(x => x.no === b.dataset.visit); if (!r) return; closePanel(true);
+    if (S.view === 'room') goRoomFromRoom(r); else { S.via = 'globe'; diveInto(r); }
+  }));
+  root.querySelectorAll('[data-cold]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.cold === 'theme') { joinTheme().then(() => renderInbox()); return; }
+    closePanel();
+    if (S.view === 'room' && iOwnRoom(roomKey(S.room))) openShare(); else toast('回到你的房间，点下方“分享”生成卡片');
+  }));
+}
+function viaSummary(visitors) {
+  const tot = {}; visitors.forEach(v => Object.entries(v.via || {}).forEach(([k, n]) => { tot[k] = (tot[k] || 0) + n; }));
+  const parts = Object.entries(tot).filter(([, n]) => n).sort((a, b) => b[1] - a[1]);
+  const open = visitors.reduce((a, v) => { if (v.open) { a.ok += v.open.sdk + v.open.nosdk; a.fail += v.open.fail; } return a; }, { ok: 0, fail: 0 });
+  return (parts.length ? parts.map(([k, n]) => `<span class="tag dim">${esc(VIA[k])} ${n}</span>`).join('') : '<span class="mute small">来源从这一版开始记录。</span>') + (open.fail ? `<span class="tag pink">外链作品打不开 ${open.fail} 次</span>` : '');
+}
+
+/* ---------- SDK 接入说明 ---------- */
+const SDK_SNIPPET = `// 隔壁 SDK：粘进你的作品，约 15 行
+const gebi = { on: false, origin: '*' };
+addEventListener('message', (e) => {
+  const m = e.data;
+  if (!m || m.gebi !== 1 || m.type !== 'hello') return;
+  gebi.on = true; gebi.origin = e.origin;
+  // m.room = { no, name, owner }  m.entry = { title }  m.data = 房间给的初始数据
+  parent.postMessage({ gebi: 1, type: 'ready' }, e.origin);
+});
+gebi.send = (type, extra) => {
+  if (gebi.on) parent.postMessage(Object.assign({ gebi: 1, type }, extra), gebi.origin);
+};
+// 状态变了，同步给房间里的物件
+gebi.send('state', { data: { score: 12 } });
+// 在房间里弹一句提示（最多 60 字）
+gebi.send('toast', { text: '保存好了' });
+// 把画面推到物件屏幕上（游戏建议每秒不超过 12 帧）
+createImageBitmap(canvas).then((f) => {
+  if (gebi.on) parent.postMessage({ gebi: 1, type: 'screen', frame: f }, gebi.origin, [f]);
+});`;
+const SDK_DOC = 'https://github.com/ciki-9876/gebi/blob/main/docs/SDK.md';
+function openSdkGuide() {
+  if (S.win) minimizeWin(S.win, true);
+  if (S.panel) closePanel(true);
+  S.panel = { kind: 'sdk' };
+  setPanel('开发者 · 可选', '接入隔壁 SDK', `
+    <p class="u-mb3">不接 SDK，作品照样能在房间里打开。接了以后，房间能确认作品“真的打开了”，桌上的物件也会跟着作品变化。</p>
+    <ol class="steps-s"><li><b>握手</b><span>房间打开作品后发来 <code>hello</code>，你回一个 <code>ready</code>。窗口标题栏会变成“已接入”。</span></li>
+    <li><b>同步状态</b><span>发 <code>state</code>，物件就能显示比分、待办数这类状态。</span></li>
+    <li><b>推送画面</b><span>游戏可以发 <code>screen</code>，把画面推到房间里那台游戏机的屏幕上。</span></li></ol>
+    <div class="code-box"><button type="button" class="btn sm" id="sdkCopy">复制代码</button><pre><code>${esc(SDK_SNIPPET)}</code></pre></div>
+    <dl class="kv u-mt4"><dt>消息格式</dt><dd><code>{ gebi: 1, type, ... }</code></dd><dt>可用 type</dt><dd><code>ready</code> <code>state</code> <code>screen</code> <code>toast</code> <code>close</code></dd><dt>外链作品</dt><dd>网站需要允许被嵌入：不要设 <code>X-Frame-Options: DENY</code></dd><dt>托管作品</dt><dd>上传的单文件 HTML 跑在沙箱里，没有同源权限，也能用 SDK</dd></dl>`,
+    `<a class="btn" href="${SDK_DOC}" target="_blank" rel="noopener noreferrer">完整文档 ${ICON.ext}</a>`);
+  $('#sdkCopy').addEventListener('click', () => { try { navigator.clipboard.writeText(SDK_SNIPPET).then(() => toast('代码已复制'), () => toast('复制没成功，手动选中代码复制')); } catch (e) { toast('复制没成功，手动选中代码复制'); } });
+}
+$('#pocketBtn').addEventListener('click', openPocket);
+$('#cardBtn').addEventListener('click', () => { const r = S.resident; if (S.room && S.room.mine && !cardOf(r)) openCardEditor(r); else openCard(); });
+$('#cardEditBtn').addEventListener('click', () => openCardEditor(S.resident));
+$('#pendingRow').addEventListener('click', e => { const b = e.target.closest('[data-uid]'); if (b) selectItem(findGroup(b.dataset.uid)); });
+$('#plate').addEventListener('click', () => { if (S.view === 'room' && S.mode === 'visit' && !S.busy) openCard(); });
 
 
 /* deck */
@@ -4322,11 +4668,11 @@ async function boot() {
   await tween(3.2, t => { G.cam.dist = 16 + (HOME_DIST - 16) * t; G.cam.lon = ME.lon - 70 + 58 * t; G.cam.lat = 14 + 8 * t; }, ease.outQuint);
   S.busy = false; G.idle = 0;
   if (location.hash === '#plan') openDeck();
-  const deep = /^#room-([A-Za-z0-9._~-]+)$/.exec(location.hash || '');
+  const deep = /^#room-([A-Za-z0-9._~-]+)(?:&from=([a-z]{1,12}))?$/.exec(location.hash || '');
   if (deep) {
     for (let i = 0; i < 30 && deep[1] !== '302' && !CLOUD.ready; i++) await sleep(200);
     const r = residentOfKey(deep[1]) || RESIDENTS.find(x => x.no === deep[1]);
-    if (r) diveInto(r); else toast('这个房间链接找不到了，可能房主搬走了');
+    if (r) { S.via = VIA[deep[2]] ? deep[2] : 'link'; diveInto(r); } else toast('这个房间链接找不到了，可能房主搬走了');
   }
   try {
     if (window.claude && window.claude.use) {

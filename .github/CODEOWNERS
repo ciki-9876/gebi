@@ -1,0 +1,7 @@
+# 这些路径的改动需要维护者批准
+/styles/tokens.css        @ciki-9876
+/design-system/           @ciki-9876
+/docs/DESIGN.md           @ciki-9876
+/docs/ARCHITECTURE.md     @ciki-9876
+/tools/                   @ciki-9876
+/.github/                 @ciki-9876

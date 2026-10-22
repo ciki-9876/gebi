@@ -1,0 +1,19 @@
+name: 需求
+description: 提一个新功能或体验改进
+labels: [体验]
+body:
+  - type: textarea
+    id: who
+    attributes:
+      label: 谁在什么场景下遇到什么问题
+      placeholder: 例如：来看作品的招聘方找不到候选人的联系方式
+    validations: { required: true }
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你的方案（可选）
+  - type: textarea
+    id: measure
+    attributes:
+      label: 怎么知道做对了
+      placeholder: 对应迭代计划里的哪个指标，或者用户会多做 / 少做什么

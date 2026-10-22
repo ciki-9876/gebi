@@ -1,0 +1,73 @@
+/* =====================================================================
+   隔壁设计系统 · Base：重置、排版、工具类
+   只引用 tokens.css 里的语义 token。
+   ===================================================================== */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text-1);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: var(--lh-body);
+  overflow: hidden;
+  padding-block: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "ss01", "cv11";
+}
+[hidden] { display: none !important; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--info); text-underline-offset: 2px; }
+img, canvas { max-width: 100%; }
+:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+::selection { background: var(--accent-soft); color: var(--text-1); }
+* { scrollbar-width: thin; scrollbar-color: var(--surface-4) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: var(--surface-4); border-radius: var(--r-pill); }
+code {
+  font-family: var(--font-mono); font-size: .88em;
+  background: var(--surface-3); border: 1px solid var(--border-1);
+  padding: 1px 5px; border-radius: var(--r-xs); overflow-wrap: anywhere;
+}
+kbd {
+  font-family: var(--font-mono); font-size: 10.5px; line-height: 1;
+  border: 1px solid var(--border-2); border-bottom-width: 2px; border-radius: var(--r-xs);
+  padding: 2px 5px; color: var(--text-1); background: var(--surface-2);
+}
+
+/* ---------- 排版角色 ---------- */
+.t-eyebrow {
+  font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: var(--fw-medium);
+  letter-spacing: var(--tracking-label); text-transform: uppercase; color: var(--text-3);
+}
+.t-title { font-size: var(--fs-xl); font-weight: var(--fw-semibold); line-height: var(--lh-snug); letter-spacing: -.01em; text-wrap: balance; margin: 0; }
+.t-display { font-weight: var(--fw-bold); line-height: var(--lh-tight); letter-spacing: var(--tracking-tight); text-wrap: balance; margin: 0; }
+.t-num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.mute { color: var(--text-2); }
+.dim { color: var(--text-3); }
+.small { font-size: var(--fs-sm); line-height: var(--lh-body); }
+
+/* ---------- 工具类：只做间距与对齐，不带颜色 ---------- */
+.u-m0 { margin: 0; }
+.u-mt0 { margin-top: 0; }
+.u-mt2 { margin-top: var(--sp-2); }
+.u-mt3 { margin-top: var(--sp-3); }
+.u-mt4 { margin-top: var(--sp-4); }
+.u-mb2 { margin: 0 0 var(--sp-2); }
+.u-mb3 { margin: 0 0 var(--sp-3); }
+.u-mb4 { margin: 0 0 var(--sp-4); }
+.u-row { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+.u-strong { font-weight: var(--fw-semibold); }
+.u-mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+.u-loose { line-height: var(--lh-loose); }
+.u-center { text-align: center; }
+.u-span-all { grid-column: 1 / -1; }
+.u-pad-xl { padding: var(--sp-12) var(--sp-6); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
