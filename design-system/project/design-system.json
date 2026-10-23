@@ -22,8 +22,8 @@
       "files": {
         "gebi-mark.svg": {
           "name": "gebi-mark.svg",
-          "blob": "e41aa135a53bce111913f44ebc16be99",
-          "size": 460,
+          "blob": "db95ec31228c4ffbce0e2db3fcb52a28",
+          "size": 437,
           "type": "image/svg+xml"
         }
       }
@@ -36,8 +36,8 @@
   },
   "lastChange": {
     "by": "CikiLaw",
-    "at": "2026-10-22T10:44:51Z",
+    "at": "2026-10-23T06:03:13Z",
     "via": "GitHub · ciki-9876/gebi",
-    "note": "从 styles/tokens.css 与组件样式建立 v1：51 个颜色、17 个组件"
+    "note": "v2「舷窗」：实体键、凹槽小屏、舱板三种材质；背光青取代窗灯；新增 ConsoleKey、Screen、Led、OrbitFeed、Porthole"
   }
 }

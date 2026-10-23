@@ -201,14 +201,15 @@ const FONT = {
   disp: cssVar('--font-sans', '"Noto Sans SC",sans-serif')
 };
 const TK = {
-  bg: cssVar('--ink-900', '#0c0e13'), surface: cssVar('--ink-750', '#1c2129'), text1: cssVar('--fog-100', '#eef1f6'), text2: cssVar('--fog-300', '#a4adbd'), text3: cssVar('--fog-500', '#808a9c'),
-  accent: cssVar('--lamp-500', '#f5b94a'), accentText: cssVar('--lamp-400', '#ffd27a'), info: cssVar('--screen-400', '#7db7ff'), heat: cssVar('--heat-400', '#ff7aa8'), line: 'rgba(214,224,255,.14)'
+  bg: cssVar('--bg', '#111318'), surface: cssVar('--surface-3', '#252a33'), text1: cssVar('--text-1', '#e1e7f3'), text2: cssVar('--text-2', '#9ba4b6'), text3: cssVar('--text-3', '#8b94a7'),
+  accent: cssVar('--accent', '#62e6d4'), accentText: cssVar('--accent-text', '#62e6d4'), accentLine: cssVar('--accent-line', 'rgba(98,230,212,.42)'), accentSoft: cssVar('--accent-soft', 'rgba(98,230,212,.12)'),
+  info: cssVar('--info', '#7db7ff'), heat: cssVar('--heat', '#ff7aa8'), screen: cssVar('--screen', '#050b0d'), screenText: cssVar('--screen-text', '#8fe9da'), line: 'rgba(255,255,255,.09)'
 };
 /* 门牌：系统的标志元素，画布版本（3D 门上、分享卡片）与 .plate-no 保持一致 */
 function drawPlate(g, x, y, w, h, no, scale = 1) {
   g.save();
   g.fillStyle = TK.surface; rr(g, x, y, w, h, 12 * scale); g.fill();
-  g.strokeStyle = 'rgba(245,185,74,.55)'; g.lineWidth = 2 * scale; rr(g, x + scale, y + scale, w - 2 * scale, h - 2 * scale, 11 * scale); g.stroke();
+  g.strokeStyle = TK.accentLine; g.lineWidth = 2 * scale; rr(g, x + scale, y + scale, w - 2 * scale, h - 2 * scale, 11 * scale); g.stroke();
   const wx = x + 18 * scale, wy = y + h / 2 - 11 * scale;
   g.shadowColor = TK.accent; g.shadowBlur = 14 * scale; g.fillStyle = TK.accent; rr(g, wx, wy, 16 * scale, 22 * scale, 3 * scale); g.fill(); g.shadowBlur = 0;
   g.fillStyle = TK.accentText; g.font = `600 ${Math.round(h * .5)}px ${FONT.mono}`; g.textBaseline = 'middle'; g.textAlign = 'left';
@@ -1431,7 +1432,7 @@ function buildRoom(data) {
   const gg = new THREE.BufferGeometry(); gg.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
   S.grid = new THREE.LineSegments(gg, new THREE.LineBasicMaterial({ color: 0xffb454, transparent: true, opacity: .22 }));
   S.grid.visible = S.mode === 'build'; root.add(S.grid);
-  S.selRing = new THREE.Mesh(new THREE.RingGeometry(.92, 1, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb454').multiplyScalar(1.6), transparent: true, opacity: .9, side: THREE.DoubleSide }));
+  S.selRing = new THREE.Mesh(new THREE.RingGeometry(.92, 1, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(TK.accent).multiplyScalar(1.6), transparent: true, opacity: .9, side: THREE.DoubleSide }));
   S.selRing.rotation.x = -Math.PI / 2; S.selRing.position.y = .02; S.selRing.visible = false; root.add(S.selRing);
   rebuildColliders();
   drawNote(); drawChalk();
@@ -1743,7 +1744,7 @@ function buildGlobe(landBuf) {
 
   // ---- reticle (hover)
   const ret = new THREE.Group();
-  const rmat = new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb454').multiplyScalar(1.8), transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
+  const rmat = new THREE.MeshBasicMaterial({ color: new THREE.Color(TK.accent).multiplyScalar(1.6), transparent: true, opacity: .95, side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending });
   ret.add(new THREE.Mesh(new THREE.RingGeometry(.026, .029, 64), rmat));
   const inner = new THREE.Mesh(new THREE.RingGeometry(.012, .0135, 48, 1, 0, Math.PI * 1.4), rmat); ret.add(inner); ret.userData.inner = inner;
   for (let i = 0; i < 4; i++) { const t = new THREE.Mesh(new THREE.PlaneGeometry(.011, .0018), rmat); const a = i * Math.PI / 2; t.position.set(Math.cos(a) * .038, Math.sin(a) * .038, 0); t.rotation.z = a; ret.add(t); }
@@ -1863,7 +1864,7 @@ function updateGlobeCamera(dt) {
   G.shift += (G.shiftGoal - G.shift) * (1 - Math.exp(-dt * 5));
   const W = innerWidth, H = innerHeight;
   gcam.aspect = W / H;
-  const sy = isNarrow() && S.view === 'globe' && !S.panel ? -H * .1 : 0;
+  const sy = S.view === 'globe' && !S.panel ? (isNarrow() ? -H * .04 : 26) : 0;   // 让地球落在舷窗正中（上窗框比下窗框窄）
   if (Math.abs(G.shift) > .5 || sy) gcam.setViewOffset(W, H, -G.shift, sy, W, H); else if (gcam.view) gcam.clearViewOffset();
   gcam.updateProjectionMatrix();
 }
@@ -1892,7 +1893,7 @@ function placeReticle(dir) {
   r.position.copy(dir).multiplyScalar(1.012);
   r.lookAt(dir.clone().multiplyScalar(2));
 }
-function dropMarker(lat, lon, color = '#ffb454') {
+function dropMarker(lat, lon, color = TK.accent) {
   clearMarker();
   const up = latLonToVec(lat, lon).normalize(), g = new THREE.Group();
   g.position.copy(up); g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), up);
@@ -2274,7 +2275,7 @@ async function composeCard(shot) {
   const works = [];
   S.roomRoot && S.roomRoot.traverse(o => { const e = entryOf(o); if (e && !['door', 'view', 'music'].includes(e.kind) && e.title) works.push(e.title); });
   let x = bx, y = 1230; g.font = `30px ${FONT.body}`;
-  [...new Set(works)].slice(0, 5).forEach(t => { const w = g.measureText(t).width + 44; if (x + w > W - 64) { x = bx; y += 66; } if (y > 1300) return; g.fillStyle = 'rgba(245,185,74,.13)'; rr(g, x, y - 26, w, 52, 14); g.fill(); g.fillStyle = TK.accentText; g.fillText(t, x + 22, y + 1); x += w + 14; });
+  [...new Set(works)].slice(0, 5).forEach(t => { const w = g.measureText(t).width + 44; if (x + w > W - 64) { x = bx; y += 66; } if (y > 1300) return; g.fillStyle = TK.accentSoft; rr(g, x, y - 26, w, 52, 14); g.fill(); g.fillStyle = TK.accentText; g.fillText(t, x + 22, y + 1); x += w + 14; });
   g.fillStyle = TK.line; g.fillRect(bx, 1350, W - bx * 2, 2);
   g.fillStyle = TK.text3; g.font = `26px ${FONT.body}`; g.fillText('隔壁 · 给写代码的人一间房', bx, 1396);
   g.font = `24px ${FONT.mono}`; g.textAlign = 'right'; g.fillText(room.lat != null ? fmtCity(room.lat, room.lon).replace(' · 城市级', '') : '', W - bx, 1396); g.textAlign = 'left';
@@ -2379,11 +2380,64 @@ function buildGlobeLabels() {
     glabels.appendChild(b); p.label = b;
   });
 }
+/* ---------- 首页：轨道上的邻居动态（读数挂在绕地球的一道轨道弧上） ---------- */
+const orbitSvg = $('#orbit'), _oc = new THREE.Vector3();
+const ORBIT_ANG = [220, 205, 190, 175];   // 读数在轨道左侧的位置，单位度，0° 指向右
+function globeOnScreen() {
+  const c = toScreen(_oc.set(0, 0, 0), gcam);
+  const d = gcam.position.length(), fov = gcam.fov * Math.PI / 180;
+  const r = (innerHeight / 2) * Math.tan(Math.asin(Math.min(1, 1 / d))) / Math.tan(fov / 2);
+  return { x: c.x, y: c.y, r };
+}
+function layoutOrbit() {
+  if (!orbitSvg || !G.ready) return;
+  const items = [...feedEl.children], show = S.view === 'globe' && !S.busy && !isNarrow() && !S.panel;
+  orbitSvg.classList.toggle('off', !show); feedEl.parentElement.classList.toggle('off', !show);
+  if (!show) return;
+  const g = globeOnScreen(); if (!isFinite(g.r) || !isFinite(g.x) || g.r <= 0 || gcam.position.length() < 1.05) return;
+  const R = g.r * 1.16 + 34, rad = a => a * Math.PI / 180;
+  const pt = (a, rr = R) => [g.x + rr * Math.cos(rad(a)), g.y + rr * Math.sin(rad(a))];
+  const a0 = pt(162), a1 = pt(222);
+  let svg = `<circle cx="${g.x}" cy="${g.y}" r="${R}" class="o-ring"/><path d="M${a0[0]} ${a0[1]} A${R} ${R} 0 0 1 ${a1[0]} ${a1[1]}" class="o-arc"/>`;
+  for (let a = 162; a <= 222; a += 4) { const p = pt(a), q = pt(a, R + (a % 12 === 0 ? 9 : 5)); svg += `<line x1="${p[0]}" y1="${p[1]}" x2="${q[0]}" y2="${q[1]}" class="o-tick"/>`; }
+  const now = performance.now(); if (G.feedHot && G.feedHot.until < now) G.feedHot = null;
+  items.forEach((li, i) => {
+    const a = ORBIT_ANG[i]; if (a == null) { li.style.opacity = '0'; return; }
+    const [x, y] = pt(a), on = !!(G.feedHot && li._r === G.feedHot.r);
+    li.style.transform = `translate(${x - 16}px,${y}px) translate(-100%,-50%)`; li.style.opacity = '';
+    li.classList.toggle('on', on);
+    svg += `<rect x="${x - 4}" y="${y - 4}" width="8" height="8" rx="2" class="o-node${on ? ' on' : ''}"/>`;
+    if (on) {
+      const p = G.pins.find(q => q.r === li._r);
+      if (p) {
+        _tp.copy(p.up).multiplyScalar(1 + p.h); const s = toScreen(_tp, gcam);
+        if (s.z < 1 && p.up.dot(globeCamDir(_cd).normalize()) > .1) svg += `<path d="M${x + 6} ${y} L${s.x} ${s.y}" class="o-lead"/><circle cx="${s.x}" cy="${s.y}" r="13" class="o-reticle"/>`;
+      }
+    }
+  });
+  orbitSvg.innerHTML = svg;
+}
+/* 控制台右侧的小屏：你的房间近况 */
+function syncHomeLcd(mr) {
+  const el = $('#lcdLines'); if (!el) return;
+  const lines = [];
+  if (mr) {
+    const info = residentInfo(mr);
+    lines.push([mr.no, `${info.name || '你的房间'} · 你的房间`]);
+    if (CLOUD.ready) { const u = myUpdates(); lines.push(['今天', u.count ? updatesSentence(u).replace(/[，,]$/, '') : '这一天店里挺安静']); }
+    else lines.push(['今天', '2 位邻居来过，黑板上 1 条新留言']);
+    const todo = (SG.tasks || []).filter(t => !t.done).length;
+    lines.push(['拾光', todo ? `还有 ${todo} 件待办` : '待办都做完了']);
+  } else {
+    lines.push(['你', '还没有房间']); lines.push(['入住', '按「选址入住」在地球上挑个地址']);
+  }
+  el.innerHTML = lines.map(([k, v]) => `<p><span>${esc(k)}</span>${esc(v)}</p>`).join('');
+}
 const _cd = new THREE.Vector3(), _tp = new THREE.Vector3();
 function updateGlobeLabels() {
   if (!G.ready) return;
   globeCamDir(_cd).normalize();
-  const far = G.cam.dist > 5.2;
+  const far = G.cam.dist > 6;
   for (const p of G.pins) {
     if (!p.label) continue;
     const facing = p.up.dot(_cd);
@@ -2393,8 +2447,9 @@ function updateGlobeLabels() {
     p.label.style.transform = `translate(${s.x}px,${s.y}px) translate(-50%,-100%)`;
     p.label.style.opacity = show ? String(clamp((facing - .22) * 4, 0, 1)) : '0';
     p.label.style.pointerEvents = show ? 'auto' : 'none';
-    p.label.classList.toggle('hot', !!(G.labelHover === p || (G.hoverPin && G.hoverPin.r === p.r)));
+    p.label.classList.toggle('hot', !!(G.labelHover === p || (G.hoverPin && G.hoverPin.r === p.r) || (G.feedHot && G.feedHot.r === p.r)));
   }
+  layoutOrbit();
 }
 
 /* ============================================================
@@ -2411,10 +2466,17 @@ function pushFeed(item, ago) {
   const r = RESIDENTS.find(x => x.no === item[0]); if (!r) return;
   const info = residentInfo(r);
   const li = document.createElement('li');
-  li.innerHTML = `<button type="button"><i style="--c:${residentColor(r)}"></i><span><b>${esc(info.handle)}</b> ${esc(item[1])}</span><small>${esc(info.city)} · ${esc(ago)}</small></button>`;
-  li.querySelector('button').addEventListener('click', () => { if (!S.busy) openResident(r); });
-  feedEl.prepend(li); while (feedEl.children.length > 5) feedEl.lastChild.remove();
+  li.innerHTML = `<button type="button"><small>${esc(ago)} · ${esc(info.city)}</small><span><b>${esc(info.handle)}</b> ${esc(item[1])}</span></button>`;
+  const btn = li.querySelector('button');
+  btn.addEventListener('click', () => { if (!S.busy) openResident(r); });
+  const hot = on => { G.feedHot = on ? { r, until: Infinity } : null; };
+  btn.addEventListener('pointerenter', () => hot(true)); btn.addEventListener('pointerleave', () => hot(false));
+  btn.addEventListener('focus', () => hot(true)); btn.addEventListener('blur', () => hot(false));
+  li._r = r;
+  feedEl.prepend(li); while (feedEl.children.length > 4) feedEl.lastChild.remove();
+  if (ago === '刚刚' && S.view === 'globe') G.feedHot = { r, until: performance.now() + 4200 };   // 新动态到达：引线亮 4 秒
   if (ago === '刚刚' && S.view === 'globe' && G.ready) ripple(latLonToVec(r.lat, r.lon));
+  layoutOrbit();
 }
 function startFeed() {
   [['110', '42 分钟前'], ['202', '25 分钟前'], ['101', '11 分钟前'], ['303', '4 分钟前'], ['204', '1 分钟前']].forEach(([no, ago]) => pushFeed(FEED_POOL.find(f => f[0] === no), ago));
@@ -2512,7 +2574,7 @@ function openAddress(lat, lon) {
   if (S.panel) closePanel(true);
   S.panel = { kind: 'address', lat, lon }; G.hover = null; G.reticle.visible = false; ghud.hidden = true;
   G.shiftGoal = isNarrow() ? 0 : -200;
-  dropMarker(lat, lon, water ? '#62e6ff' : '#ffb454'); ripple(latLonToVec(lat, lon));
+  dropMarker(lat, lon, water ? TK.info : TK.accent); ripple(latLonToVec(lat, lon));
   flyGlobe(lat, lon, isNarrow() ? 2.6 : 2.15, 1.3);
   const sky = localSky(lat, lon, tzFor(lat, lon));
   const near = nearestResidents(lat, lon, null, 2);
@@ -2697,8 +2759,8 @@ async function exitToGlobe() {
   S.busy = false; G.idle = 0;
 }
 const goStreet = exitToGlobe;
-function homeShift() { return isNarrow() ? 0 : innerWidth * .15; }
-const HOME_DIST = isNarrow() ? 6.4 : 4.3;
+function homeShift() { return isNarrow() ? 0 : innerWidth * .05; }
+const HOME_DIST = isNarrow() ? 6.4 : 5.6;   // 舷窗里的地球整颗可见
 
 /* room helpers shown in the HUD */
 const guideEl = $('#guide');
@@ -3565,9 +3627,9 @@ function syncChrome() {
     $('#plateName').textContent = '地球 · 隔壁社区';
     $('#plateSub').textContent = `${RESIDENTS.length} 户已入住 · 实时昼夜`;
     $('#stats').hidden = true;
-    $('#hsCount').textContent = RESIDENTS.length;
     const mr = CLOUD.ready ? myResident() : RESIDENTS.find(r => r.preset === 'mine');
-    $('#goMine').textContent = mr ? `回到我的房间 · ${mr.city} ${mr.no}` : `去 302 零点酒吧串门`;
+    $('#goMine').innerHTML = mr ? `<b>回到我的房间</b><small>${esc(mr.city || '')} · ${esc(mr.no)}</small>` : `<b>去 302 串门</b><small>零点电竞酒吧 · 上海</small>`;
+    syncHomeLcd(mr);
     $('#roleNote').hidden = !(CLOUD.ready && !canPost());
     if (CLOUD.ready && !canPost()) $('#roleNote').innerHTML = VIEWER_NOTE;
     syncThemeBtn();
@@ -3819,7 +3881,8 @@ function syncThemeBtn() {
   TH.cur = Object.assign(TH.cur, curTheme());
   const n = themeMembers(TH.cur.id).length;
   b.querySelector('.th-t').textContent = TH.cur.title;
-  b.querySelector('.th-n').textContent = `${n} 间亮灯 · 还剩 ${TH.cur.left} 天`;
+  b.querySelector('.th-n').textContent = `${n} 间亮灯 · 剩 ${TH.cur.left} 天`;
+  const leds = b.querySelector('.th-leds'); if (leds) leds.innerHTML = Array.from({ length: 10 }, (_, i) => `<i class="led${i < n ? ' on' : ''}"></i>`).join('');
   b.style.setProperty('--tc', TH.cur.c);
   b.setAttribute('aria-pressed', TH.on);
 }
@@ -4389,7 +4452,7 @@ function clickWalk(point) {
   const from = FP.pos.clone();
   for (let i = 0; i < 20 && blocked(p); i++) p.lerp(from, .15);
   if (p.distanceTo(from) < .4) return;
-  if (!walkRing) { walkRing = new THREE.Mesh(new THREE.RingGeometry(.16, .2, 40), new THREE.MeshBasicMaterial({ color: new THREE.Color('#ffb454').multiplyScalar(1.8), transparent: true, side: THREE.DoubleSide, depthWrite: false })); walkRing.rotation.x = -Math.PI / 2; }
+  if (!walkRing) { walkRing = new THREE.Mesh(new THREE.RingGeometry(.16, .2, 40), new THREE.MeshBasicMaterial({ color: new THREE.Color(TK.accent).multiplyScalar(1.8), transparent: true, side: THREE.DoubleSide, depthWrite: false })); walkRing.rotation.x = -Math.PI / 2; }
   S.roomRoot.add(walkRing); walkRing.position.set(p.x, .02, p.z); walkRing.userData.t = 0;
   fpGo(p, FP.yaw, FP.pitch, clamp(.4 + p.distanceTo(from) / 3.2, .5, 2));
 }

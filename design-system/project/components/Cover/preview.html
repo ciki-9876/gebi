@@ -3,119 +3,30 @@
 <html>
 <head><meta charset="utf-8"><title>Cover</title>
 <style>
-  html, body { margin: 0; padding: 0; background: var(--bg); }
-  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; background: var(--bg); }
-  .cv { position: absolute; right: 0; top: 0; }
-  .b4 { fill: var(--surface-4); }
-  .ba { fill: var(--accent); }
-  .bi { fill: var(--info); }
-  .lg { rx: var(--r-lg); }
-  .win rect { rx: var(--r-xs); }
-  .w { fill: var(--surface-2); }
-  .wl { fill: var(--accent); }
-  .wd { fill: var(--text-on-accent); opacity: .22; }
-  .name { position: absolute; left: 48px; bottom: 70px; margin: 0; font-family: var(--font-sans); font-weight: 700; font-size: 72px; line-height: .95; letter-spacing: -0.02em; color: var(--text-1); }
+  html, body { margin: 0; padding: 0; background: var(--surface-1); }
+  .cover { position: relative; width: 960px; height: 288px; overflow: hidden; background: var(--grain), var(--surface-1); }
+  /* 舷窗：右侧一面圆角玻璃，窗外是地球的一角 */
+  .win { position: absolute; right: 40px; top: 28px; width: 420px; height: 168px; border-radius: 48px; overflow: hidden; background: var(--bg-deep);
+    box-shadow: inset 0 0 0 1px var(--border-2), inset 0 16px 36px var(--bg-deep), 0 0 0 10px var(--bg-deep), 0 0 0 11px var(--border-1); }
+  .earth { position: absolute; left: 120px; top: 70px; width: 360px; height: 360px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 30%, var(--surface-3), var(--bg-deep) 70%); box-shadow: 0 0 0 10px var(--info-soft), 0 0 60px 20px var(--info-line); }
+  .you { position: absolute; left: 236px; top: 112px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+  /* 控制台：窗下一排键 */
+  .keys { position: absolute; right: 40px; bottom: 30px; display: flex; gap: 12px; }
+  .k { height: 46px; border-radius: var(--r-md); background: var(--key-face); box-shadow: var(--key-shadow); }
+  .k.main { width: 190px; position: relative; }
+  .k.main::before { content: ""; position: absolute; left: 14px; right: 14px; top: 7px; height: 2px; border-radius: 2px; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .k.s { width: 70px; }
+  .lcd { width: 120px; height: 46px; border-radius: var(--r-md); background: var(--scanline), var(--screen); box-shadow: var(--recess); }
+  .name { position: absolute; left: 48px; bottom: 70px; margin: 0; font-family: var(--font-sans); font-weight: 800; font-size: 60px; line-height: 1.05; letter-spacing: .02em; color: var(--text-1); }
   .tag-line { position: absolute; left: 48px; bottom: 40px; margin: 0; max-width: 400px; font-family: var(--font-sans); font-size: 14px; color: var(--text-2); }
 </style></head>
 <body>
 <div class="cover">
-  <h1 class="name">隔壁设计系统</h1>
-  <p class="tag-line">夜里的街区，只有有人在的地方亮着灯。</p>
-  <svg class="cv" viewBox="480 0 480 288" width="480" height="288" aria-hidden="true">
-  <!--
-    blocks: surface-4 楼 112×(sp-12×4) 与 140×276，accent 亮灯的楼 96×252，info 屏幕光的楼 80×160；圆角 r-lg
-    arrangement: 一排高低不齐的楼，底边全部出血，像夜里的一条街；暖色那栋是“你的房间”，放在偏左的视觉中心
-    pattern: 窗格（字面母题“亮着的窗”）——sp-3×sp-4 的小窗，横距 sp-6、纵距 28；大多不亮（surface-2），少数亮窗灯（accent）
-    scales: sp-3 sp-4 sp-6 sp-12 · r-lg · r-xs（小窗）
-  -->
-  <rect class="b4 lg" x="496" y="96" width="112" height="208"/>
-  <rect class="ba lg" x="624" y="48" width="96" height="256"/>
-  <rect class="bi lg" x="736" y="136" width="80" height="168"/>
-  <rect class="b4 lg" x="832" y="24" width="144" height="280"/>
-  <g class="win">
-    <rect class="w" x="512" y="116" width="12" height="16"/>
-    <rect class="w" x="536" y="116" width="12" height="16"/>
-    <rect class="w" x="560" y="116" width="12" height="16"/>
-    <rect class="w" x="584" y="116" width="12" height="16"/>
-    <rect class="w" x="512" y="144" width="12" height="16"/>
-    <rect class="wl" x="536" y="144" width="12" height="16"/>
-    <rect class="w" x="560" y="144" width="12" height="16"/>
-    <rect class="w" x="584" y="144" width="12" height="16"/>
-    <rect class="w" x="512" y="172" width="12" height="16"/>
-    <rect class="w" x="536" y="172" width="12" height="16"/>
-    <rect class="w" x="560" y="172" width="12" height="16"/>
-    <rect class="w" x="584" y="172" width="12" height="16"/>
-    <rect class="w" x="512" y="200" width="12" height="16"/>
-    <rect class="w" x="536" y="200" width="12" height="16"/>
-    <rect class="w" x="560" y="200" width="12" height="16"/>
-    <rect class="w" x="584" y="200" width="12" height="16"/>
-    <rect class="w" x="512" y="228" width="12" height="16"/>
-    <rect class="w" x="536" y="228" width="12" height="16"/>
-    <rect class="w" x="560" y="228" width="12" height="16"/>
-    <rect class="wl" x="584" y="228" width="12" height="16"/>
-    <rect class="w" x="512" y="256" width="12" height="16"/>
-    <rect class="w" x="536" y="256" width="12" height="16"/>
-    <rect class="w" x="560" y="256" width="12" height="16"/>
-    <rect class="w" x="584" y="256" width="12" height="16"/>
-    <rect class="w" x="848" y="44" width="12" height="16"/>
-    <rect class="w" x="872" y="44" width="12" height="16"/>
-    <rect class="w" x="896" y="44" width="12" height="16"/>
-    <rect class="w" x="920" y="44" width="12" height="16"/>
-    <rect class="w" x="848" y="72" width="12" height="16"/>
-    <rect class="w" x="872" y="72" width="12" height="16"/>
-    <rect class="w" x="896" y="72" width="12" height="16"/>
-    <rect class="w" x="920" y="72" width="12" height="16"/>
-    <rect class="wl" x="848" y="100" width="12" height="16"/>
-    <rect class="w" x="872" y="100" width="12" height="16"/>
-    <rect class="w" x="896" y="100" width="12" height="16"/>
-    <rect class="w" x="920" y="100" width="12" height="16"/>
-    <rect class="w" x="848" y="128" width="12" height="16"/>
-    <rect class="w" x="872" y="128" width="12" height="16"/>
-    <rect class="w" x="896" y="128" width="12" height="16"/>
-    <rect class="w" x="920" y="128" width="12" height="16"/>
-    <rect class="w" x="848" y="156" width="12" height="16"/>
-    <rect class="w" x="872" y="156" width="12" height="16"/>
-    <rect class="w" x="896" y="156" width="12" height="16"/>
-    <rect class="w" x="920" y="156" width="12" height="16"/>
-    <rect class="w" x="848" y="184" width="12" height="16"/>
-    <rect class="w" x="872" y="184" width="12" height="16"/>
-    <rect class="wl" x="896" y="184" width="12" height="16"/>
-    <rect class="w" x="920" y="184" width="12" height="16"/>
-    <rect class="w" x="848" y="212" width="12" height="16"/>
-    <rect class="w" x="872" y="212" width="12" height="16"/>
-    <rect class="w" x="896" y="212" width="12" height="16"/>
-    <rect class="w" x="920" y="212" width="12" height="16"/>
-    <rect class="w" x="848" y="240" width="12" height="16"/>
-    <rect class="w" x="872" y="240" width="12" height="16"/>
-    <rect class="w" x="896" y="240" width="12" height="16"/>
-    <rect class="wl" x="920" y="240" width="12" height="16"/>
-    <rect class="w" x="848" y="268" width="12" height="16"/>
-    <rect class="wl" x="872" y="268" width="12" height="16"/>
-    <rect class="w" x="896" y="268" width="12" height="16"/>
-    <rect class="w" x="920" y="268" width="12" height="16"/>
-    <rect class="wd" x="644" y="72" width="12" height="16"/>
-    <rect class="wd" x="668" y="72" width="12" height="16"/>
-    <rect class="wd" x="692" y="72" width="12" height="16"/>
-    <rect class="wd" x="644" y="100" width="12" height="16"/>
-    <rect class="wd" x="668" y="100" width="12" height="16"/>
-    <rect class="wd" x="692" y="100" width="12" height="16"/>
-    <rect class="wd" x="644" y="128" width="12" height="16"/>
-    <rect class="wd" x="668" y="128" width="12" height="16"/>
-    <rect class="wd" x="692" y="128" width="12" height="16"/>
-    <rect class="wd" x="644" y="156" width="12" height="16"/>
-    <rect class="wd" x="668" y="156" width="12" height="16"/>
-    <rect class="wd" x="692" y="156" width="12" height="16"/>
-    <rect class="wd" x="644" y="184" width="12" height="16"/>
-    <rect class="wd" x="668" y="184" width="12" height="16"/>
-    <rect class="wd" x="692" y="184" width="12" height="16"/>
-    <rect class="wd" x="644" y="212" width="12" height="16"/>
-    <rect class="wd" x="668" y="212" width="12" height="16"/>
-    <rect class="wd" x="692" y="212" width="12" height="16"/>
-    <rect class="wd" x="644" y="240" width="12" height="16"/>
-    <rect class="wd" x="668" y="240" width="12" height="16"/>
-    <rect class="wd" x="692" y="240" width="12" height="16"/>
-  </g>
-</svg>
+  <h1 class="name">隔壁<br>设计系统</h1>
+  <p class="tag-line">舷窗：界面长在舱壁上，地球在窗外。</p>
+  <div class="win"><div class="earth"></div><i class="you"></i></div>
+  <div class="keys"><i class="k main"></i><i class="k s"></i><i class="k s"></i><i class="lcd"></i></div>
 </div>
 </body>
 </html>
