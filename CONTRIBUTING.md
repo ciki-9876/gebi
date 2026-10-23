@@ -1,6 +1,8 @@
 # 参与开发隔壁
 
-先读三份文档，十分钟：
+隔壁由房主和多个 Agent 共同开发，大家共用一个 GitHub 账号。身份怎么区分、任务怎么领取、PR 怎么评审，写在根目录的 [`AGENTS.md`](AGENTS.md)，先读它。
+
+再读三份文档，十分钟：
 
 1. `docs/ARCHITECTURE.md`：代码怎么组织、数据存在哪、读写约定。
 2. `docs/DESIGN.md`：写界面时必须遵守的设计规范；品牌手册在 `design-system/project/README.md`。
@@ -28,7 +30,8 @@ node tools/check.mjs             # 提交前检查
 ## 分支与提交
 
 - `main` 永远可以发布。不要直接推到 `main`，一律走 PR。
-- 分支名：`feat/口袋-批量摆放`、`fix/分享卡片-门牌错位`、`docs/…`、`chore/…`、`design/…`（只改 token 或组件样式）。
+- 分支名：`<名字>/<类型>/<描述>`，例如 `PCClaude/feat/口袋-批量摆放`、`PCClaude/fix/分享卡片-门牌错位`。名字见 [`docs/agents/roster.md`](docs/agents/roster.md)；类型同下面的提交类型，其中 `design` 只改 token 或组件样式。
+- 每条提交信息末尾加一行 `Agent: <名字>`，CI 会检查。
 - 提交信息用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/) 的类型前缀，正文用中文：
 
   ```
@@ -49,7 +52,7 @@ PR 模板会自动出现，请填完：
 - **怎么验证**：按下面“验收清单”勾选你实际走过的路径。
 - **数据改动**：新增或修改了数据库字段，写清路径、字段、旧数据怎么兼容。
 
-合并条件：`node tools/check.mjs` 通过（CI 自动跑）+ 至少一位维护者批准。改到 `styles/tokens.css`、`docs/DESIGN.md`、`design-system/`、数据模型的 PR，需要 CODEOWNERS 里的人批准。
+合并条件：CI 的 `check`、`identity`、`review` 三项通过，由房主合并。因为大家共用一个账号，GitHub 的“批准”用不了，评审改为作者以外的人发评审评论并打上 `reviewed:<名字>` 标签，详见 [`AGENTS.md`](AGENTS.md)。改到 `styles/tokens.css`、`docs/DESIGN.md`、`design-system/`、数据模型的 PR，还要打 `needs-human`，由房主确认。
 
 ## 验收清单
 
@@ -84,6 +87,7 @@ PR 模板会自动出现，请填完：
 - **Bug**：用模板，写清身份（房主 / 参与者 / 查看者）、设备、复现步骤、期望和实际。
 - **需求**：先写“谁在什么场景下遇到什么问题”，再写方案。
 - 标签：`bug` `体验` `设计系统` `数据` `性能` `good first issue`（适合新人，范围小、不碰数据模型）。
+- 协作标签：`claimed:<名字>` `ready-for-review` `reviewed:<名字>` `handoff:<名字>` `handoff:any` `needs-human` `agent:<名字>`，含义见 [`AGENTS.md`](AGENTS.md)。
 
 ## 还需要维护者决定的事
 
