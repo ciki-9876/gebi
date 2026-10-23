@@ -30,7 +30,7 @@
 | --- | --- | --- |
 | 提交作者名 | `git config user.name` 设为你的名字 | `PCClaude` |
 | 提交尾注 | 每条提交信息末尾一行 `Agent: <名字>` | `Agent: PCClaude` |
-| 分支名 | `<名字>/<类型>/<描述>`，类型同 CONTRIBUTING | `PCClaude/feat/口袋-批量摆放` |
+| 分支名 | `<名字>/<类型>/<描述>`，类型同 CONTRIBUTING；描述用英文小写和连字符，中文会让 GitHub 显示“隐藏字符”警告 | `PCClaude/feat/pocket-batch-place` |
 | PR 标签 | `agent:<名字>`，CI 会自动加上 | `agent:PCClaude` |
 
 PR 描述的第一项“作者”也写上你的名字。在 issue 和 PR 里发的每条评论，第一行写 `— <你的名字>`，否则大家看到的都是同一个头像，分不清是谁说的。
@@ -40,7 +40,7 @@ PR 描述的第一项“作者”也写上你的名字。在 issue 和 PR 里发
 ### 领取
 
 - 动手之前，先确认 issue 上**没有** `claimed:*` 标签。
-- 打上 `claimed:<你的名字>`，并评论：打算怎么做、会动哪些文件（改 `app.js` 写明区块名）、预计多久。
+- 打上 `claimed:<你的名字>`，并评论：打算怎么做、会动哪些文件（具体到 `src/` 下的文件名）、预计多久。
 - 没有 issue 的工作，先建 issue 再领取。改错别字这类一行的修改可以直接开 PR。
 - 一个 issue 同一时间只有一个 Agent 在做。
 
@@ -75,7 +75,7 @@ PR 描述的第一项“作者”也写上你的名字。在 issue 和 PR 里发
 ### 合并与发布
 
 - 由**评审者**合并，作者不能合并自己的 PR。三项 CI 检查全部通过才能合并：`check`（代码规范）、`identity`（身份标记）、`review`（已由作者以外的人评审），`main` 的规则集会拦下不合规的合并。
-- 合并用网页上的按钮，或者 `gh api -X PUT repos/ciki-9876/gebi/pulls/<编号>/merge`。合并后由合并者删除这个 PR 的分支：`gh api -X DELETE "repos/ciki-9876/gebi/git/refs/heads/<分支名>"`，分支名里的中文要做 URL 编码。
+- 合并用网页上的按钮，或者 `gh api -X PUT repos/ciki-9876/gebi/pulls/<编号>/merge`。合并后，合并者能删除这个 PR 的分支就删除（`git push origin --delete <分支名>`）；所在环境不允许删除时不用管，已合并的分支留着没有影响。
 - 评审者所在的工具做不了合并时，在 PR 里评论说明，打上 `handoff:any`，请别的 Agent 合并。
 - 发布到 claude.ai 见下面“必须由房主做的事”。
 
@@ -105,7 +105,8 @@ Agent 之间的消息就是 issue 和 PR 评论，用标签指明收件人：
 
 ## 避免冲突
 
-- `app.js` 是单个大文件，冲突的重灾区。改之前，先看打开的 PR 里有没有动同一个区块（`/* ===== 标题 ===== */`），有的话等它合并，或者在 issue 里协调。
+- 逻辑代码在 `src/` 下，按区块分成多个文件。改之前，先看打开的 PR 里有没有动同一个文件，有的话等它合并，或者在 issue 里协调。
+- **只改 `src/`，不要直接改 `app.js`**，它是 `node tools/build.mjs` 生成的。改完 `src/` 运行一次 build，两者一起提交。变基时 `app.js` 冲突了不要手动解决：先解决 `src/` 的冲突，再运行 build 重新生成 `app.js`，然后 `git add app.js`。
 - PR 要小。开 PR 前和推送前，都先 `git fetch origin main` 并变基到最新的 `main`。
 - 推送前跑两个检查：`node tools/check.mjs`（代码规范）和 `node tools/check-agent.mjs`（分支名、提交尾注、作者名）。
 - 只推送自己名字开头的分支。

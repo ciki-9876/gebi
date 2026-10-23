@@ -1,3 +1,4 @@
+// 生成文件：由 tools/build.mjs 把 src/ 里的文件按顺序拼接而成。不要直接修改，改 src/ 后运行 node tools/build.mjs
 (() => {
 'use strict';
 const $ = s => document.querySelector(s);

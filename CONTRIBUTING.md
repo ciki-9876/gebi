@@ -30,7 +30,7 @@ node tools/check.mjs             # 提交前检查
 ## 分支与提交
 
 - `main` 永远可以发布。不要直接推到 `main`，一律走 PR。
-- 分支名：`<名字>/<类型>/<描述>`，例如 `PCClaude/feat/口袋-批量摆放`、`PCClaude/fix/分享卡片-门牌错位`。名字见 [`docs/agents/roster.md`](docs/agents/roster.md)；类型同下面的提交类型，其中 `design` 只改 token 或组件样式。
+- 分支名：`<名字>/<类型>/<描述>`，例如 `PCClaude/feat/pocket-batch-place`、`PCClaude/fix/share-card-plate`，描述用英文。名字见 [`docs/agents/roster.md`](docs/agents/roster.md)；类型同下面的提交类型，其中 `design` 只改 token 或组件样式。
 - 每条提交信息末尾加一行 `Agent: <名字>`，CI 会检查。
 - 提交信息用 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/) 的类型前缀，正文用中文：
 
@@ -69,6 +69,7 @@ PR 模板会自动出现，请填完：
 
 ## 写代码的约定
 
+- **源码**：逻辑代码只改 `src/`，改完运行 `node tools/build.mjs` 重新生成 `app.js`，两者一起提交。
 - **转义**：插进 HTML 的变量一律 `esc()`。
 - **清洗**：读别人的数据一律过 `clean*()`，见 `docs/ARCHITECTURE.md`。
 - **权限**：写操作先判断 `canPost()`，给出能做什么的说明。

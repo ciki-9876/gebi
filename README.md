@@ -29,7 +29,9 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP
 | `index.html` | 页面结构与方案书（Artifact 页面片段，发布时由平台包上 `<!doctype>` 骨架） |
 | `styles/` | 设计系统：`tokens.css`（全部 token，事实来源）、`base.css`、`components.css`、`app.css` |
 | `design-system/project/` | 设计系统页面的源文件：品牌手册、组件说明与预览；`tokens.json` 和 `bundle.css` 由 `tools/sync-tokens.mjs` 生成 |
-| `app.js` | 全部逻辑：Three.js 场景、地球、第一人称控制、房间与家具、窗口与 SDK、Agent、社区数据 |
+| `src/` | 全部逻辑的源码，按区块拆成 25 个文件：Three.js 场景、地球、第一人称控制、房间与家具、窗口与 SDK、Agent、社区数据。文件清单见 `docs/ARCHITECTURE.md` |
+| `app.js` | 生成文件，由 `tools/build.mjs` 把 `src/` 拼接而成，页面加载的是它。不要直接修改 |
+| `tools/build.mjs` | 把 `src/` 拼接成 `app.js` |
 | `assets/land.txt` | 地球点阵数据（base64），由 `tools/mkland.py` 生成 |
 | `tools/mkland.py` | 从 three-globe 示例图片生成 `land.txt` |
 | `tools/sync-tokens.mjs` | 把 `styles/tokens.css` 导出到设计系统页面 |
