@@ -20,6 +20,7 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP
 - **新住户上手**：入住后装修栏顶部有“待上传”清单，点一件就选中对应的展示屏；动态为空时，Bit 推荐三个附近的邻居去串门，并邀请参加主题周。
 - **来源与打开率**：来访记录带来源（分享链接、物件流、地球、搜索、串门），作品窗口记录打开结果（已接入 SDK、未接入、加载失败），房主在动态里能看到来源分布。
 - **隐私**：地址只公开到城市，房子落在城市内的随机位置。
+- **发布任何 AI 产物**：点房间里的“发布作品”，或者直接把文件拖进房间。网页、文档、图片、视频、音频、PDF、3D 模型、整个项目都能发布，各自放进合适的物件（画架、电视、阅读台、唱片机、工作台、展台、显示器、储物箱）。房间里的 Bit 可以帮忙写名称和介绍。用户也可以把“发布说明”发给自己的 AI，或者装上 `tools/gebi-publish.mjs`（MCP），由 AI 打包好链接或文件。协议见 `docs/PUBLISH.md`。
 - **方案书**：页面右上角“方案书”是完整的产品设计方案。
 
 ## 目录
@@ -41,6 +42,8 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP
 | `docs/ARCHITECTURE.md` | 代码结构、数据模型与读写约定、迁移路线 |
 | `docs/DESIGN.md` | 写界面时的设计规范 |
 | `docs/SDK.md` | 作品与房间之间的消息协议 |
+| `docs/PUBLISH.md` | 发布协议：清单格式、发布链接、发布包、类型与物件、发布工具 |
+| `tools/gebi-publish.mjs` | 发布工具：零依赖的 MCP 服务器兼命令行，给用户的 AI 用 |
 | `CONTRIBUTING.md` | 协作流程：分支、提交、PR、验收清单 |
 | `AGENTS.md` | 多个 Agent 共用一个账号时的协作规则：身份、任务领取、评审、交接 |
 | `docs/agents/roster.md` | Agent 登记表 |
@@ -78,11 +81,12 @@ python3 dev/serve.py --mock   # 多人模式，模拟账号与共享数据库
     { "path": "visits/{self}", "write": "interact" }
   ] },
   "user": { "scopes": ["profile"] },
-  "downloads": true
+  "downloads": true,
+  "assets": { "upload": "interact" }
 }
 ```
 
-参与者需要在分享菜单里设为“参与者”（Contributor）才能入住和留言；“查看者”只能参观。注意：组织外的人用公开链接打开时，平台只给查看者权限，所以面向公众开放前需要迁到自己的后端（见 `docs/ARCHITECTURE.md`）。没有这些能力时（比如本地单机预览），页面自动退回浏览器本地存储。
+`assets` 用来存发布的图片、视频、PDF 等文件，`upload: "interact"` 让参与者也能上传；参与者上传的文件平台只对同一组织的成员显示。参与者需要在分享菜单里设为“参与者”（Contributor）才能入住、留言和发布作品；“查看者”只能参观。注意：组织外的人用公开链接打开时，平台只给查看者权限，所以面向公众开放前需要迁到自己的后端（见 `docs/ARCHITECTURE.md`）。没有这些能力时（比如本地单机预览），页面自动退回浏览器本地存储。
 
 ## 数据模型
 

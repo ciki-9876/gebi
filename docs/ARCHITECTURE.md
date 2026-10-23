@@ -12,7 +12,7 @@
 
 ## 代码结构
 
-源码在 `src/` 下，按区块拆成 25 个文件，文件名前的编号就是加载顺序。`tools/build.mjs` 把它们按顺序拼接、包进一个 IIFE，生成 `app.js`，页面加载的是 `app.js`。
+源码在 `src/` 下，按区块拆成 30 个文件，文件名前的编号就是加载顺序。`tools/build.mjs` 把它们按顺序拼接、包进一个 IIFE，生成 `app.js`，页面加载的是 `app.js`。
 
 - **只改 `src/`，不要直接改 `app.js`。** 改完运行 `node tools/build.mjs`，把 `src/` 和 `app.js` 一起提交。`node tools/check.mjs` 会检查两者是否同步。
 - `dev/serve.py` 每次请求 `app.js` 都会自动重新生成，本地改完刷新页面即可。
@@ -44,9 +44,14 @@
 | `19-chrome.js` | 模式切换、导航、页面外框 |
 | `20-p1.js` | 收藏与改编、主题周（`TH`）、物件流（`OF`）、试玩（`QP`）、Bit 转达 |
 | `21-v6.js` | 口袋（`POCKET`）、房间名片、待上传清单、打开结果统计、冷启动、SDK 说明 |
-| `22-input.js` | 键盘、鼠标、触屏输入 |
-| `23-loop.js` | 主循环 |
-| `24-boot.js` | 启动 `boot()` |
+| `22-art-types.js` | AI 产物的类型表 `ART_TYPES`：每种类型的默认物件、存储方式；识别文件类型；清洗 `entry.art` |
+| `23-art-store.js` | AI 产物的存储：assets、数据库、离线时的 IndexedDB；在浏览器里解压 zip；项目的拆分保存与读取 |
+| `24-art-carriers.js` | 8 种载体物件：画架、电视、阅读台、唱片机、工作台、展台、显示器、储物箱 |
+| `25-art-viewers.js` | 打开 AI 产物的窗口：图片、播放器、PDF、沙箱里的文档与代码、项目的文件树与运行 |
+| `26-publish.js` | 发布台：拖放、粘贴、发布链接、发布包都在这里汇合，Bit 补全介绍，存好后摆进房间 |
+| `27-input.js` | 键盘、鼠标、触屏输入 |
+| `28-loop.js` | 主循环 |
+| `29-boot.js` | 启动 `boot()` |
 
 ### 全局状态
 
@@ -76,11 +81,16 @@ function openSomething(r) {
 | `site/room302` | 页面所有者 | 302 的布置、地址、房主 id、名片 `card`、主题周记录 |
 | `site/room302/works/<id>` | 页面所有者 | 302 托管的单文件作品 |
 | `rooms/<uid>` | 本人 | 一间房：`no` 门牌号、`handle`、`name`、`tpl`、`theme`、`items` 家具、`lat`/`lon`/`city` 城市级坐标、`card` 名片、`tw`/`twLog` 主题周、`createdAt`/`updatedAt` |
-| `rooms/<uid>/works/<id>` | 本人 | 托管的单文件作品（≤ 200 KB） |
+| `rooms/<uid>/works/<id>` | 本人 | 托管的单文件作品（≤ 200 KB）；也存 AI 产物的文本、项目清单、数据库里的二进制，见下 |
+| `rooms/<uid>/works/<id>-c<n>` | 本人 | 项目和大文件的分块 |
 | `msgs/<uid>` | 本人 | 本人发出的留言与回复，最近 120 条；预约带 `kind:"appt"`、`when`；被催过带 `nudge` |
 | `visits/<uid>` | 本人 | 本人去过的房间：`log[<roomKey>] = { n 次数, did 做过的事, at, via 来源计数, open 打开结果计数 }` |
 | `data/users/<uid>/state` | 本人，私有 | 上次查看动态的时间 |
 | `data/users/<uid>/pocket` | 本人，私有 | 口袋：还没摆进房间的收藏 |
+
+### AI 产物 `entry.art`
+
+发布的 AI 产物挂在物件的 `entry` 上，`entry.kind` 是类型（`doc` `image` `video` `audio` `pdf` `project` `model` `data` `file`；网页和小游戏仍是 `web` `game2`，沿用 `work` 字段）。`entry.art` 的字段：`t` 类型、`name` 文件名、`mime`、`bytes`、`made` 用什么 AI 做的，以及下面三者之一：`asset`（assets 的 id，显示地址是 `/_blob/<id>`）、`url`（外部网址）、`work`（数据库路径：文本文档 `{text}`、项目清单 `{kind:"project", files, chunks}`、二进制 `{kind:"blob", chunks}`）。清洗函数是 `cleanArt()`，协议见 `docs/PUBLISH.md`。
 
 ### 约定
 
