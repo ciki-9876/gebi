@@ -26,7 +26,7 @@ for (const f of sheets) {
   const t = read(f);
   for (const m of t.matchAll(/var\(--([a-z0-9-]+)/g)) if (!defined.has(m[1]) && !LOCAL.has(m[1])) err(f, `第 ${lineOf(t, m.index)} 行用了未定义的 token --${m[1]}`);
   // 3. 组件只用语义 token，不直接引用原始色板
-  for (const m of t.matchAll(/var\(--(ink|fog|lamp|screen|live|alarm)-[0-9a-z]+\)|var\(--heat-400\)/g)) err(f, `第 ${lineOf(t, m.index)} 行直接引用了原始色板 ${m[0]}，请改用语义 token`);
+  for (const m of t.matchAll(/var\(--(hull|fog|glow|phos)-[0-9a-z]+\)|var\(--(screen|led|heat|alarm)-400\)/g)) err(f, `第 ${lineOf(t, m.index)} 行直接引用了原始色板 ${m[0]}，请改用语义 token`);
 }
 for (const m of app.matchAll(/var\(--([a-z0-9-]+)/g)) if (!defined.has(m[1]) && !LOCAL.has(m[1]) && !['acc', 'on'].includes(m[1])) err('app.js', `第 ${lineOf(app, m.index)} 行用了未定义的 token --${m[1]}`);
 
@@ -39,7 +39,7 @@ for (const f of ['styles/base.css', 'styles/components.css']) {
 {
   const f = 'styles/app.css', t = read(f).replace(/\/\*[\s\S]*?\*\//g, c => c.replace(/[^\n]/g, ' '));
   const n = [...t.matchAll(LIT)].length;
-  const BASELINE = 39;   // 现有字面量：房主作品自带皮肤、天色、毛玻璃光晕。只能减少，不要增加
+  const BASELINE = 37;   // 现有字面量：房主作品自带皮肤、天色标签。只能减少，不要增加
   if (n > BASELINE) err(f, `颜色字面量 ${n} 处，超过基线 ${BASELINE}。新样式请用 token`);
   else if (n) warn(f, `还有 ${n} 处颜色字面量（基线 ${BASELINE}）`);
 }

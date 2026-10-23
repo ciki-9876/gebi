@@ -89,20 +89,21 @@ const tokens = {
 
 /* ---------- 2. 组件样式 bundle.css ---------- */
 // components.css 全部 + app.css 里几个会在预览中出现的模块（按选择器前缀抽取单行规则）
-const EXPORT = ['.mark', '.oc', '.win-bar', '.win-dot', '.win-t', '.win-sub', '.win-host', '.win-sdk', '.win-act', '.wbtn', '.win-get', '.gsearch', '.gsugg', '.theme-chip', '.gpin', '.pending-row', '.pr-l', '.pr-i'];
+const EXPORT = ['.mark', '.oc', '.win-bar', '.win-dot', '.win-t', '.win-sub', '.win-host', '.win-sdk', '.win-act', '.wbtn', '.win-get', '.gsearch', '.gsugg', '.gclock', '.theme-chip', '.gpin', '.pending-row', '.pr-l', '.pr-i', '.key-main', '.key-tall', '.lcd', '.orbit', '.feed', '.modes', '.btn-plan', '.like', '.stats'];
 const appCss = read('styles/app.css').split('\n').filter(l => EXPORT.some(p => l.startsWith(p)) && l.trim().endsWith('}'));
-const PREVIEW_BASE = `/* 预览页底：对应 styles/base.css 里与预览相关的部分 */
+const PREVIEW_BASE = `/* 预览页底：对应 styles/base.css 里与预览相关的部分。预览的底是舱壁 */
 *, *::before, *::after { box-sizing: border-box; }
-body { margin: 0; padding: 16px; background: var(--bg); color: var(--text-1); font-family: var(--font-sans); font-size: var(--fs-base); line-height: var(--lh-body); -webkit-font-smoothing: antialiased; }
+body { margin: 0; padding: 16px; background: var(--grain), var(--surface-1); color: var(--text-1); font-family: var(--font-sans); font-size: var(--fs-base); line-height: var(--lh-body); -webkit-font-smoothing: antialiased; }
 button, input, textarea { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 [hidden] { display: none !important; }
-code { font-family: var(--font-mono); font-size: .88em; background: var(--surface-3); border: 1px solid var(--border-1); padding: 1px 5px; border-radius: var(--r-xs); }
+code { font-family: var(--font-mono); font-size: .88em; background: var(--screen); color: var(--screen-text); box-shadow: var(--recess); padding: 1px 5px; border-radius: var(--r-xs); }
 .mute { color: var(--text-2); } .small { font-size: var(--fs-sm); }
 .row { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
 .stack { display: grid; gap: var(--sp-3); }
 `;
-const bundle = `/* 隔壁设计系统 · 组件样式 —— 由 tools/sync-tokens.mjs 从 styles/components.css 与 styles/app.css 生成，不要手改 */\n${PREVIEW_BASE}\n${read('styles/components.css')}\n/* ---- 来自 styles/app.css ---- */\n${appCss.join('\n')}\n`;
+const FONTS = "@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&family=Nunito:wght@400;600;700;800&display=swap');";
+const bundle = `${FONTS}\n/* 隔壁设计系统 · 组件样式 —— 由 tools/sync-tokens.mjs 从 styles/components.css 与 styles/app.css 生成，不要手改 */\n${PREVIEW_BASE}\n${read('styles/components.css')}\n/* ---- 来自 styles/app.css ---- */\n${appCss.join('\n')}\n`;
 
 /* ---------- 3. 写出或检查 ---------- */
 const out = {

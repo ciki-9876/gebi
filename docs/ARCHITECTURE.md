@@ -16,13 +16,13 @@
 
 | 区块 | 内容 |
 | --- | --- |
-| 工具与常量 | `$`、`esc`、`store`、`FONT`、`TK`（从 CSS 读取的 token）、`drawPlate()` |
+| 工具与常量 | `$`、`esc`、`store`、`FONT`、`TK`（从 CSS 读取的语义 token，画布和 3D 里的界面元素都用它取色）、`drawPlate()` |
 | Geography | 城市表 `CITIES`、演示住户 `RESIDENTS`、太阳位置 |
 | Scene / Room | Three.js 场景、后期处理、房间与家具的程序化建模（`build*` 函数）、物件定义 `ITEMS` |
 | Globe | 地球点阵、住户标签、连线、选址 |
 | Cloud | `CLOUD` 状态、`initCloud()`、读写封装 `cloudWrite()`、清洗函数 `clean*()` |
 | Community | 留言、来访、动态、访客簿、托管作品、分享卡片 |
-| Overlays / Search | 3D 热点、地球标签、搜索 |
+| Overlays / Search | 3D 热点、地球标签、轨道动态 `layoutOrbit()`、控制台小屏 `syncHomeLcd()`、搜索 |
 | Transitions | `diveInto()`（从地球进房间）、`exitToGlobe()` |
 | Panels | `setPanel()` 与各类面板：Bit、作品、黑板、住户、选址 |
 | Windows | 站内作品窗口与 SDK 消息处理 |

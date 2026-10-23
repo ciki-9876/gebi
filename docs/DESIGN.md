@@ -20,15 +20,27 @@
 
 ## 硬规则（`node tools/check.mjs` 会检查）
 
-1. **颜色只用语义 token**：`--bg`、`--surface-1…4`、`--border-1…3`、`--text-1…3`、`--accent*`、`--info*`、`--success*`、`--heat*`、`--danger*`。不直接引用 `--ink-*`、`--lamp-*` 等原始色板。
+1. **颜色只用语义 token**：`--bg`、`--surface-1…4`、`--border-1…3`、`--text-1…3`、`--accent*`、`--screen*`、`--info*`、`--success*`、`--heat*`、`--danger*`，以及拟物 token `--key-*`、`--recess`、`--plate-edge`、`--grain`、`--scanline`、`--legend-glow`。不直接引用 `--hull-*`、`--fog-*`、`--glow-*`、`--phos-*` 等原始色板。
 2. **base.css 与 components.css 里不写颜色字面量**。app.css 里现有的字面量（房主作品自带皮肤、天色标签）有基线数量，只能减少。
 3. **用到的 `var(--x)` 都必须在 tokens.css 里定义**。按数据传入的局部变量只有 `--c`（住户颜色）和 `--tc`（主题色）。
 4. **JS 里不写布局用的内联样式**。`style="..."` 只用来传数据（`style="--c:${color}"`）；间距、对齐用 `.u-*` 工具类。
 5. **改 token 后同步设计系统**：运行 `node tools/sync-tokens.mjs`，把生成的 `design-system/project/tokens.json` 和 `bundle.css` 一起提交。
 
+## 三种材质（先选材质，再写样式）
+
+设计系统叫「舷窗」：界面长在舱壁上，地球在窗外。每个新元素先决定它是哪一种：
+
+| 材质 | 写法 | 例子 |
+| --- | --- | --- |
+| 实体键 | `background: var(--key-face); box-shadow: var(--key-shadow); margin-bottom: var(--key-depth)`；按下或锁定 `transform: translateY(var(--key-depth)); box-shadow: var(--key-shadow-down)` | `.btn`、`.modes button`、`.guide button`、`.of-f button`、`.gpin` |
+| 凹槽小屏 | `background: var(--screen); box-shadow: var(--recess); color: var(--screen-text)`，需要时叠 `var(--scanline)` | `.input`、`.gsearch`、`.lcd`、`.toast`、`.tag`、`.plate-no` |
+| 舱板 | `background: var(--grain), var(--surface-1); box-shadow: var(--plate-edge)` | `.panel`、`.win`、`.buildbar`、`.stats`、`.oc` |
+
+不要用毛玻璃（`backdrop-filter`）、胶囊形按钮和描边卡片，那是上一版的语法。
+
 ## 软规则（评审时看）
 
-- **一屏一个主按钮**（`.btn.primary`），放在面板底部最左。
+- **一屏一颗主键**（`.btn.primary` 或控制台的 `.key-main`），放在面板底部最左。背光青只给主键、你的房间和选中。
 - **房间号永远用门牌** `.plate-no`，canvas 里用 `drawPlate()`。
 - **字号只用阶梯里的值**：`--fs-xs` 到 `--fs-5xl`。需要新字号，先在 PR 里说明为什么现有的不够。
 - **间距是 4 的倍数**，优先用 `--sp-*`。

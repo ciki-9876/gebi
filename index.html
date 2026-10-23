@@ -2,26 +2,29 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600;700&family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Tilt+Neon&family=ZCOOL+KuaiLe&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&family=Nunito:wght@400;600;700;800&family=Tilt+Neon&family=ZCOOL+KuaiLe&display=swap">
 <link rel="stylesheet" href="styles/tokens.css">
 <link rel="stylesheet" href="styles/base.css">
 <link rel="stylesheet" href="styles/components.css">
 <link rel="stylesheet" href="styles/app.css">
 
 <canvas id="scene" tabindex="0" aria-label="可交互的 3D 房间"></canvas>
+<div class="porthole" id="porthole" aria-hidden="true"></div>
 <section class="home" id="home" aria-label="地球首页">
+  <svg class="orbit" id="orbit" aria-hidden="true"></svg>
+  <aside class="feed" aria-label="邻居动态"><ul id="feedList"></ul></aside>
   <div class="hero">
-    <div class="eyebrow"><i></i>GEBI · 内测第 0 期 · 实时昼夜</div>
-    <h1>给写代码的人<br><em>一间房</em></h1>
-    <p class="lead">在地球上挑一个真实地址，把你写的网页作品搬进去。推开门就是你的房间，邻居们从世界各地来串门。</p>
-    <div class="cta"><button type="button" class="btn primary lg" id="goMine">回到我的房间 · 302</button><button type="button" class="btn lg glass" id="pickAddr">在地球上选址入住</button></div>
-    <div class="cta cta2"><button type="button" class="theme-chip" id="themeBtn" aria-pressed="false" aria-label="本周主题周"><i></i><span class="th-k">本周主题</span><b class="th-t"></b><span class="th-n"></span></button><button type="button" class="btn lg glass" id="openObjFeed">逛物件流</button><button type="button" class="btn lg glass" id="pocketBtn" hidden><span>口袋 · 0</span></button></div>
-    <div class="hstats"><span><b id="hsCount">16</b>户已入住</span><span><b>11</b>个国家</span><span><b>2.6k</b>盏窗灯</span><span class="demo">演示数据</span></div>
-    <p class="role-note" id="roleNote" hidden></p>
+    <h1>给写代码的人<br>一间房</h1>
+    <p class="lead">在地球上挑一个真实地址，把网页作品搬进去。邻居从世界各地来串门。</p>
   </div>
-  <aside class="feed" aria-label="邻居动态"><div class="feed-h"><span>邻居动态</span><span class="tag dim">演示数据</span></div><ul id="feedList"></ul></aside>
-  <form class="gsearch" id="gsearch" role="search" autocomplete="off"><ul class="gsugg" id="gsugg" hidden></ul><div class="box"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m13.5 13.5 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="gsearchIn" placeholder="搜城市或住户：东京、Berlin、@pixelmo" aria-label="搜索城市或住户"><span class="kbd">Enter</span></div></form>
-  <div class="gclock" id="gclock"></div>
+  <div class="console" aria-label="控制台">
+    <button type="button" class="key-main" id="goMine"><b>回到我的房间</b><small>上海 · 302</small></button>
+    <button type="button" class="key-tall" id="pickAddr"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M3.5 12h17M12 3.5c2.6 2.8 2.6 14.2 0 17M12 3.5c-2.6 2.8-2.6 14.2 0 17" fill="none" stroke="currentColor" stroke-width="1.6"/></svg><span>选址入住</span></button>
+    <button type="button" class="key-tall" id="openObjFeed"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="3.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="3.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="13.5" y="13.5" width="7" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>逛物件流</span></button>
+    <button type="button" class="key-tall" id="pocketBtn" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v6a7 7 0 0 1-14 0z M9 10l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/></svg><span>口袋 · 0</span></button>
+    <form class="gsearch" id="gsearch" role="search" autocomplete="off"><ul class="gsugg" id="gsugg" hidden></ul><label class="box"><span class="pr" aria-hidden="true">&gt;</span><input id="gsearchIn" placeholder="搜城市或住户：东京、Berlin、@pixelmo" aria-label="搜索城市或住户"><span class="kbd">Enter</span></label><div class="gclock" id="gclock"></div></form>
+    <div class="lcd" id="homeLcd" aria-live="polite"><p id="roleNote" hidden></p><div id="lcdLines"></div></div>
+  </div>
 </section>
 <div class="glabels" id="glabels"></div>
 <div class="ghud" id="ghud" hidden></div>
@@ -47,6 +50,8 @@
     <span class="plate-no" id="plateNo">16</span>
     <span class="plate-txt"><span class="plate-name" id="plateName">地球 · 隔壁社区</span><span class="plate-sub" id="plateSub">实时昼夜</span></span>
   </button>
+  <div class="spacer"></div>
+  <button type="button" class="theme-chip" id="themeBtn" aria-pressed="false" aria-label="本周主题周"><span class="th-k">本周主题</span><b class="th-t"></b><span class="th-leds" id="thLeds" aria-hidden="true"></span><span class="th-n"></span></button>
   <div class="spacer"></div>
   <nav class="modes" id="modes" aria-label="模式">
     <span class="thumb" id="modeThumb"></span>
