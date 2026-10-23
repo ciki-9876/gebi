@@ -85,6 +85,7 @@ function cleanEntry(e, prefix) {
   const o = { kind, title: String(e.title || '').slice(0, 30), desc: String(e.desc || '').slice(0, 80), url: validUrl(e.url) ? String(e.url).trim().slice(0, 500) : '' };
   const fr = cleanFrom(e.from); if (fr) o.from = fr;
   if (typeof e.work === 'string' && WORK_RE.test(e.work) && (!prefix || e.work.startsWith(prefix) || (fr && !fr.adapted))) { o.work = e.work; o.workBytes = +e.workBytes || 0; }
+  if (e.art) { const a = cleanArt(e.art, prefix, !!(fr && !fr.adapted)); if (a) o.art = a; }
   if (e.open === 'tab') o.open = 'tab';
   if (e.size === 'wide' || e.size === 'tall') o.size = e.size;
   if (typeof e.color === 'string' && /^#[0-9a-f]{6}$/i.test(e.color)) o.color = e.color;

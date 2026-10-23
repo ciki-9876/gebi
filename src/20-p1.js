@@ -327,6 +327,14 @@ async function openQuickPlay(it) {
   ensureQP(); const e = it.e; QP.it = it;
   const body = QP.el.querySelector('.qp-body'); body.innerHTML = '';
   QP.el.querySelector('.qp-t b').textContent = e.title || '作品';
+  if (e.art) {
+    QP.el.querySelector('.qp-t span').textContent = `${it.handle} · ${it.city || ''} · ${artInfo(e)}`;
+    QP.el.querySelector('[data-q="tab"]').hidden = true; QP.el.querySelector('[data-q="collect"]').hidden = !!it.mine;
+    const box = document.createElement('div'); box.className = 'art-view'; body.appendChild(box); QP.el.hidden = false;
+    renderArt(box, e, { autorun: true });
+    if (it.real && !it.key.startsWith('demo:')) recordVisit(it.key, '试玩 ' + String(e.title || '').slice(0, 20));
+    return;
+  }
   const real = embedSource(e);
   if (!real && it.real) {
     // 真实住户还没上传：不放占位动画，直接说清楚

@@ -147,6 +147,7 @@ function openWindow(g) {
   showWin(w);
 }
 function createWin(g, e) {
+  if (e.art) return createArtWin(g, e);
   const src = embedSource(e), iid = g.userData.iid;
   const size = e.size || (e.kind === 'game' || e.kind === 'game2' ? 'wide' : 'tall');
   const kc = KIND_COLOR[e.kind] || KIND_COLOR.link;
@@ -257,7 +258,7 @@ function minimizeWin(w, quiet) {
 }
 function closeWin(w, quiet) {
   if (!w || !WINS.has(w.iid)) return;
-  w.timers.forEach(clearTimeout); clearTimeout(w.hs);
+  w.timers.forEach(clearTimeout); clearTimeout(w.hs); if (w.onClose) w.onClose();
   w.el.remove(); WINS.delete(w.iid);
   if (game.remote === w) { game.remote = null; game.mode = 'attract'; gReset(); }
   const sc = screenOf(w.g); if (sc && sc.restore) sc.restore();
@@ -358,7 +359,7 @@ function renderInspector(g) {
     ${!e ? `<p class="mute small u-mb3">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : kept ? `<p class="small u-mb3"><span class="tag">收藏品</span> 收藏自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」</p><p class="mute small u-m0">作品属于原作者，这里只负责展示它：访客点开会链回 TA 的房间。想改成自己的版本，请去原房间点“改编一份”。不想留了，直接删除这件物件就行。</p>` : `
     <form id="inForm">
       ${e.from ? `<p class="small u-mb3"><span class="tag pink">改编</span> 改编自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」，署名会一直保留。</p>` : ''}
-      ${builtin ? `<p class="small u-mb3"><span class="tag ${e.kind === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[e.kind])}</span> <span class="mute">内置入口，打开方式由房间提供</span></p>` :
+      ${builtin ? `<p class="small u-mb3"><span class="tag ${e.kind === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[e.kind])}</span> <span class="mute">${e.art ? esc(artInfo(e)) + '。要换文件，删掉它重新发布' : '内置入口，打开方式由房间提供'}</span></p>` :
       `<div class="field"><label>作品类型</label><div class="seg" id="inKind">${BIND_KINDS.map(k => `<button type="button" data-k="${k}" aria-pressed="${k === kindSel}">${KIND_LABEL[k]}</button>`).join('')}</div></div>`}
       <div class="field"><label for="inTitle">作品名称</label><input class="input" id="inTitle" maxlength="20" value="${esc(e.title || '')}"></div>
       ${builtin ? '' : `<div class="field"><label>外观 · 主题色</label><div class="swatches" id="inColor">${SW.map(c => `<button type="button" data-c="${c}" style="${c ? 'background:' + c : ''}" aria-pressed="${(e.color || '') === c}" aria-label="${c || '默认'}">${c ? '' : '默认'}</button>`).join('')}</div><span class="mute small">展示屏和街机会换成这个颜色，改编的作品可以先从换色开始。</span></div>`}
@@ -369,7 +370,7 @@ function renderInspector(g) {
         <textarea class="input code" id="inPaste" rows="5" hidden placeholder="<!doctype html> 粘贴完整的单文件 HTML"></textarea><span class="err" id="inHostErr" hidden></span></div>
       <div class="field"><label>打开方式</label><div class="seg" id="inOpen"><button type="button" data-v="embed" aria-pressed="${e.open !== 'tab'}">站内窗口</button><button type="button" data-v="tab" aria-pressed="${e.open === 'tab'}">新标签页</button></div></div>
       <div class="field"><label>窗口形状</label><div class="seg" id="inSize">${[['tall', '竖版 · 适合工具'], ['wide', '横版 · 适合游戏']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${(e.size || (/game/.test(e.kind) ? 'wide' : 'tall')) === v}">${l}</button>`).join('')}</div></div>` : ''}
-      ${builtin ? '' : `<div class="field"><label for="inDesc">一句话介绍</label><textarea class="input" id="inDesc" maxlength="60" rows="2">${esc(e.desc || '')}</textarea></div>`}
+      ${builtin && !e.art ? '' : `<div class="field"><label for="inDesc">一句话介绍</label><textarea class="input" id="inDesc" maxlength="60" rows="2">${esc(e.desc || '')}</textarea></div>`}
       ${['shiguang', 'app', 'game', 'game2', 'web'].includes(e.kind) ? `<div class="divider"></div><p class="section-t">客户端下载（可选）</p><p class="mute small u-mb3">访客打开作品时会看到适合自己设备的那一项。桌面安装包建议用 GitHub Releases 的 latest 固定链接，发新版不用改这里。</p>
       ${PLATFORMS.map(p => { const it = (e.downloads || {})[p.k] || {}; return `<div class="dl-edit"><label for="dl_${p.k}">${p.label}</label><input class="input" id="dl_${p.k}" inputmode="url" placeholder="${esc(p.ph)}" value="${esc(it.url || '')}"><input class="input" id="dlv_${p.k}" maxlength="12" placeholder="版本号" value="${esc(it.ver || '')}"></div>`; }).join('')}<span class="err" id="dlErr" hidden></span>` : ''}
     </form>`}`,
@@ -418,7 +419,8 @@ function renderInspector(g) {
       try { await saveWork(path, $('#inTitle').value.trim() || e.title || '作品', pendingHtml); } catch (x) { hostErr.textContent = '托管没成功，稍后再试。'; hostErr.hidden = false; return; }
       e.work = path; e.workBytes = new Blob([pendingHtml]).size; e.open = 'embed';
     } else if (unhost) { delete e.work; delete e.workBytes; }
-    if (!builtin) { e.kind = kind || 'web'; const d = $('#inDesc'); if (d) e.desc = d.value.trim(); }
+    if (!builtin) e.kind = kind || 'web';
+    if (!builtin || e.art) { const d = $('#inDesc'); if (d) e.desc = d.value.trim(); }
     if (!builtin) { if (colorPick) e.color = colorPick; else delete e.color; }
     e.title = $('#inTitle').value.trim() || e.title || '未命名作品';
     if (u) e.url = u.value.trim();

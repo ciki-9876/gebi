@@ -455,7 +455,7 @@ body.of-open .home { pointer-events: none; }
 .qp-t b { font-weight: var(--fw-semibold); }
 .qp-t span { font-size: var(--fs-sm); color: var(--text-3); }
 .qp-act { display: flex; gap: 6px; align-items: center; }
-.qp-body { flex: 1; min-height: 0; background: var(--bg-deep); }
+.qp-body { position: relative; flex: 1; min-height: 0; background: var(--bg-deep); }
 .qp-body iframe { width: 100%; height: 100%; border: 0; background: #fff; }
 
 /* ---------- 方案书 ---------- */
@@ -581,3 +581,42 @@ pre.code .c { color: var(--text-3); } pre.code .s { color: var(--accent-text); }
 
 /* 触屏没有鼠标视角 */
 @media (hover: none) { #lockBtn { display: none; } }
+
+/* ---------- AI 产物：查看器（src/25-art-viewers.js） ---------- */
+.art-view { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg-deep); }
+.art-wait { flex: 1; display: grid; place-items: center; }
+.art-stage { flex: 1; min-height: 0; display: grid; place-items: center; overflow: auto; }
+.art-stage.full { place-items: start; }
+.art-img { max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in; }
+.art-stage.full .art-img { max-width: none; max-height: none; cursor: zoom-out; }
+.art-video { width: 100%; height: 100%; background: var(--bg-deep); }
+.art-frame, .art-pdf { flex: 1; width: 100%; min-height: 0; border: 0; background: var(--surface-1); display: block; }
+.art-audio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-3); padding: var(--sp-6); text-align: center; color: var(--text-1); }
+.art-audio audio { width: 100%; max-width: 420px; }
+.art-disc { position: relative; width: 160px; height: 160px; border-radius: 50%; background: repeating-radial-gradient(circle, var(--surface-3) 0 2px, var(--surface-1) 2px 5px); box-shadow: var(--shadow-2); }
+.art-disc::after { content: ''; position: absolute; inset: 38%; border-radius: 50%; background: var(--accent); }
+.art-audio.playing .art-disc { animation: art-spin 3s linear infinite; }
+@keyframes art-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .art-audio.playing .art-disc { animation: none; } }
+.art-proj { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.art-proj-bar { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--border-1); background: var(--surface-1); }
+.art-proj-main { flex: 1; min-height: 0; display: flex; }
+.art-tree { width: 220px; flex: none; overflow: auto; padding: var(--sp-2) 0; border-right: 1px solid var(--border-1); background: var(--surface-1); }
+.art-tree button { display: block; width: 100%; padding: 3px var(--sp-3); border: 0; background: none; color: var(--text-2); font-family: var(--font-mono); font-size: var(--fs-sm); text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.art-tree button:hover { background: var(--surface-2); color: var(--text-1); }
+.art-tree button[aria-current="true"] { background: var(--accent-soft); color: var(--accent-text); }
+.art-pane { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; }
+@media (max-width: 640px) {
+  .art-proj-main { flex-direction: column; }
+  .art-tree { width: auto; max-height: 30%; border-right: 0; border-bottom: 1px solid var(--border-1); }
+}
+
+/* ---------- AI 产物：发布台（src/26-publish.js） ---------- */
+.pub-card { margin-bottom: var(--sp-3); padding: var(--sp-3); border: 1px solid var(--border-2); border-radius: var(--r-lg); background: var(--surface-1); }
+.pub-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.pub-head b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pub-drop { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-4); padding: var(--sp-5) var(--sp-4); border: 1.5px dashed var(--border-3); border-radius: var(--r-lg); color: var(--text-2); text-align: center; }
+.pub-drop b { color: var(--text-1); }
+.pub-drop.over { border-color: var(--accent); background: var(--accent-soft); }
+.pub-more summary { margin-top: var(--sp-3); color: var(--text-2); font-size: var(--fs-sm); cursor: pointer; }
+.pub-more pre { margin: var(--sp-2) 0 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); font-family: var(--font-mono); font-size: var(--fs-xs); white-space: pre-wrap; overflow: auto; }
