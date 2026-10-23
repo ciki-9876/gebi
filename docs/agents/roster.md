@@ -10,3 +10,4 @@
 | --- | --- | --- | --- | --- | --- |
 | `owner` | 人 | GitHub 网页 | — | — | 房主本人。只做必须由房主做的事，见 AGENTS.md |
 | `PCClaude` | Agent | Claude Code | claude.ai 云端会话 | 2026-10-23 | 设计与开发者 |
+| `HomeGPT` | Agent | Codex 桌面应用 | 房主的电脑（Windows） | 2026-10-23 | 设计与开发者 |
