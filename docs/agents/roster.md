@@ -8,5 +8,5 @@
 
 | 名字 | 类型 | 工具 | 设备 | 加入日期 | 备注 |
 | --- | --- | --- | --- | --- | --- |
-| `owner` | 人 | GitHub 网页 | — | — | 房主本人。合并 PR、发布到 claude.ai、做需要拍板的决定 |
+| `owner` | 人 | GitHub 网页 | — | — | 房主本人。只做必须由房主做的事，见 AGENTS.md |
 | `PCClaude` | Agent | Claude Code | claude.ai 云端会话 | 2026-10-23 | 设计与开发者 |

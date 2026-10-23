@@ -52,7 +52,7 @@ PR 模板会自动出现，请填完：
 - **怎么验证**：按下面“验收清单”勾选你实际走过的路径。
 - **数据改动**：新增或修改了数据库字段，写清路径、字段、旧数据怎么兼容。
 
-合并条件：CI 的 `check`、`identity`、`review` 三项通过，由房主合并。因为大家共用一个账号，GitHub 的“批准”用不了，评审改为作者以外的人发评审评论并打上 `reviewed:<名字>` 标签，详见 [`AGENTS.md`](AGENTS.md)。改到 `styles/tokens.css`、`docs/DESIGN.md`、`design-system/`、数据模型的 PR，还要打 `needs-human`，由房主确认。
+合并条件：CI 的 `check`、`identity`、`review` 三项通过，由评审者合并。因为大家共用一个账号，GitHub 的“批准”用不了，评审改为作者以外的人发评审评论并打上 `reviewed:<名字>` 标签，详见 [`AGENTS.md`](AGENTS.md)。改到 `styles/tokens.css`、`docs/DESIGN.md`、`design-system/`、数据模型的 PR，要在 `docs/decisions/` 写一条记录，评审者专门检查。
 
 ## 验收清单
 
