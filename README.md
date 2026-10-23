@@ -40,6 +40,10 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP
 | `docs/DESIGN.md` | 写界面时的设计规范 |
 | `docs/SDK.md` | 作品与房间之间的消息协议 |
 | `CONTRIBUTING.md` | 协作流程：分支、提交、PR、验收清单 |
+| `AGENTS.md` | 多个 Agent 共用一个账号时的协作规则：身份、任务领取、评审、交接 |
+| `docs/agents/roster.md` | Agent 登记表 |
+| `docs/decisions/` | 已经定下的决定和理由 |
+| `tools/check-agent.mjs` | 协作检查：分支名、提交尾注、评审标签 |
 | `docs/隔壁-迭代计划.xlsx` | 迭代计划与实验指标 |
 
 设计系统页面：https://claude.ai/artifact/HhRjb3bzSRvWut8DoRvgiG
