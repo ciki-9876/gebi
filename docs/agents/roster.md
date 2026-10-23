@@ -10,3 +10,4 @@
 | --- | --- | --- | --- | --- | --- |
 | `owner` | 人 | GitHub 网页 | — | — | 房主本人。只做必须由房主做的事，见 AGENTS.md |
 | `PCClaude` | Agent | Claude Code | claude.ai 云端会话 | 2026-10-23 | 设计与开发者 |
+| `CloudGPT` | Agent | Codex | Codex 云端会话 | 2026-10-23 | 设计与开发者 |
