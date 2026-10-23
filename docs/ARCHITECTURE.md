@@ -5,30 +5,48 @@
 隔壁目前是一个**单页原型**，发布为 claude.ai Artifact：
 
 - 没有自己的服务器。账号、共享数据、AI 对话全部来自 Artifact 运行时能力（`user`、`db`、`sample`、`downloads`）。
-- 没有构建步骤。`index.html` 引用 `styles/*.css` 和 `app.js`，Three.js 等依赖从 CDN 加载。
+- 几乎没有构建步骤：`index.html` 引用 `styles/*.css` 和 `app.js`，Three.js 等依赖从 CDN 加载。`app.js` 由 `tools/build.mjs` 把 `src/` 下的文件拼接而成，没有转译和压缩。
 - 本地开发用 `dev/serve.py`，`--mock` 时用 `dev/mock-claude.js` 模拟 `db` 和 `user`。
 
 > 这个形态有一个硬限制：组织外的人用公开链接打开时，平台只给“查看者”权限，**写不了任何共享数据**（不能入住、留言，来访不被记录）。面向公众开放之前，需要迁到自己的后端，见文末“迁移路线”。
 
 ## 代码结构
 
-`app.js` 是一个 IIFE，内部按区块组织，每块以 `/* ===== 标题 ===== */` 开头。主要区块：
+源码在 `src/` 下，按区块拆成 25 个文件，文件名前的编号就是加载顺序。`tools/build.mjs` 把它们按顺序拼接、包进一个 IIFE，生成 `app.js`，页面加载的是 `app.js`。
 
-| 区块 | 内容 |
+- **只改 `src/`，不要直接改 `app.js`。** 改完运行 `node tools/build.mjs`，把 `src/` 和 `app.js` 一起提交。`node tools/check.mjs` 会检查两者是否同步。
+- `dev/serve.py` 每次请求 `app.js` 都会自动重新生成，本地改完刷新页面即可。
+- 所有文件共享同一个作用域，和拆分前一样：一个文件里定义的函数和变量，其他文件可以直接用，不需要导入导出。顶层直接执行的代码（不在函数里的）只能用编号更小的文件里已经定义的 `const`/`let`。
+- 拼接后的 `app.js` 和拆分前逐字节一致（只多了第一行注释），所以发布流程不变。
+- 新增文件：编号插在合适的位置，名字只用小写字母、数字和连字符，例如 `src/16-panels-bit.js`；需要插在两个编号之间时，可以给后面的文件统一重新编号。
+
+| 文件 | 内容 |
 | --- | --- |
-| 工具与常量 | `$`、`esc`、`store`、`FONT`、`TK`（从 CSS 读取的语义 token，画布和 3D 里的界面元素都用它取色）、`drawPlate()` |
-| Geography | 城市表 `CITIES`、演示住户 `RESIDENTS`、太阳位置 |
-| Scene / Room | Three.js 场景、后期处理、房间与家具的程序化建模（`build*` 函数）、物件定义 `ITEMS` |
-| Globe | 地球点阵、住户标签、连线、选址 |
-| Cloud | `CLOUD` 状态、`initCloud()`、读写封装 `cloudWrite()`、清洗函数 `clean*()` |
-| Community | 留言、来访、动态、访客簿、托管作品、分享卡片 |
-| Overlays / Search | 3D 热点、地球标签、轨道动态 `layoutOrbit()`、控制台小屏 `syncHomeLcd()`、搜索 |
-| Transitions | `diveInto()`（从地球进房间）、`exitToGlobe()` |
-| Panels | `setPanel()` 与各类面板：Bit、作品、黑板、住户、选址 |
-| Windows | 站内作品窗口与 SDK 消息处理 |
-| Build | 装修模式：选中、属性面板、物件库 |
-| P1 | 收藏与改编、主题周、物件流、试玩、Bit 转达 |
-| v6 体验修复 | 口袋、房间名片、待上传清单、打开结果统计、冷启动、SDK 说明 |
+| `00-utils.js` | `$`、`esc`、`store`、`clamp` 等基础工具 |
+| `01-renderer.js` | 渲染器、后期处理、相机 |
+| `02-helpers.js` | 几何、材质、canvas 工具；`FONT`、`TK`（从 CSS 读取的语义 token，画布和 3D 里的界面元素都用它取色）、`drawPlate()` |
+| `03-state.js` | 全局状态 `S` |
+| `04-geography.js` | 城市表 `CITIES`、演示住户 `RESIDENTS`、太阳位置 |
+| `05-canvases.js` | 动态画布：机器人脸、显示器代码、便签、游戏、黑板 |
+| `06-textures.js` | 房间外壳的贴图 |
+| `07-items.js` | 家具的程序化建模（`build*` 函数）、物件定义 `ITEMS` |
+| `08-rooms.js` | 房间布局 |
+| `09-room-build.js` | 房间搭建：可以走进去的封闭房间 |
+| `10-controls.js` | 第一人称控制、装修时的娃娃屋相机 |
+| `11-globe.js` | 地球点阵、住户标签、连线、选址；状态 `G` |
+| `12-cloud.js` | `CLOUD` 状态、`initCloud()`、读写封装 `cloudWrite()`、清洗函数 `clean*()`；留言、来访、动态、访客簿、托管作品、分享卡片 |
+| `13-overlays.js` | 3D 热点、地球标签、轨道动态 `layoutOrbit()`、控制台小屏 `syncHomeLcd()` |
+| `14-home.js` | 地球首页界面、搜索 |
+| `15-transitions.js` | `diveInto()`（从地球进房间）、`exitToGlobe()` |
+| `16-panels.js` | `setPanel()` 与各类面板：Bit、作品、黑板、住户、选址 |
+| `17-windows.js` | 站内作品窗口与 SDK 消息处理（`WINS`）、装修模式的选中与属性面板 |
+| `18-mood.js` | 氛围与音乐 |
+| `19-chrome.js` | 模式切换、导航、页面外框 |
+| `20-p1.js` | 收藏与改编、主题周（`TH`）、物件流（`OF`）、试玩（`QP`）、Bit 转达 |
+| `21-v6.js` | 口袋（`POCKET`）、房间名片、待上传清单、打开结果统计、冷启动、SDK 说明 |
+| `22-input.js` | 键盘、鼠标、触屏输入 |
+| `23-loop.js` | 主循环 |
+| `24-boot.js` | 启动 `boot()` |
 
 ### 全局状态
 
@@ -98,7 +116,7 @@ function openSomething(r) {
 
 | 阶段 | 内容 |
 | --- | --- |
-| 1 | 拆分 `app.js` 为 ES 模块（scene / globe / cloud / panels / windows / build / community），引入一个零配置打包（esbuild）。规则不变。 |
+| 1 | 拆分 `app.js` 为 ES 模块（scene / globe / cloud / panels / windows / build / community），引入一个零配置打包（esbuild）。规则不变。**已完成第一步**：按区块拆到 `src/`，用拼接生成 `app.js`，还没有改成 ES 模块。 |
 | 2 | 抽出数据访问层：所有 `CLOUD.db` 调用集中到一个 `store` 模块，接口保持 `get / set / onSnapshot`。 |
 | 3 | 换成自己的后端（账号、房间、留言、来访、托管作品），实现同一套接口；Artifact 版本保留为演示环境。 |
 | 4 | 托管作品迁到独立域名，用真正的跨源隔离替代 `srcdoc`。 |

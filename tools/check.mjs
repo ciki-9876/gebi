@@ -13,9 +13,13 @@ const err = (f, m) => errors.push(`${f}: ${m}`);
 const warn = (f, m) => warns.push(`${f}: ${m}`);
 const lineOf = (text, idx) => text.slice(0, idx).split('\n').length;
 
-/* 1. app.js 能被解析 */
+/* 1. app.js 与 src/ 同步，能被解析；src/ 下每个文件单独也能被解析 */
+try { execFileSync(process.execPath, [join(ROOT, 'tools/build.mjs'), '--check'], { stdio: 'pipe' }); }
+catch (e) { err('app.js', '与 src/ 不同步，运行 node tools/build.mjs。不要直接修改 app.js'); }
 const app = read('app.js');
 try { new Function(app); } catch (e) { err('app.js', '语法错误：' + e.message); }
+const SRC = readdirSync(join(ROOT, 'src')).filter(n => n.endsWith('.js')).sort().map(n => `src/${n}`);
+for (const f of SRC) { try { new Function(read(f)); } catch (e) { err(f, '语法错误：' + e.message); } }
 
 /* 2. 所有 var(--x) 都在 tokens.css 里定义（--c、--tc 是按数据传入的局部变量） */
 const tokensCss = read('styles/tokens.css');
@@ -28,7 +32,10 @@ for (const f of sheets) {
   // 3. 组件只用语义 token，不直接引用原始色板
   for (const m of t.matchAll(/var\(--(hull|fog|glow|phos)-[0-9a-z]+\)|var\(--(screen|led|heat|alarm)-400\)/g)) err(f, `第 ${lineOf(t, m.index)} 行直接引用了原始色板 ${m[0]}，请改用语义 token`);
 }
-for (const m of app.matchAll(/var\(--([a-z0-9-]+)/g)) if (!defined.has(m[1]) && !LOCAL.has(m[1]) && !['acc', 'on'].includes(m[1])) err('app.js', `第 ${lineOf(app, m.index)} 行用了未定义的 token --${m[1]}`);
+for (const f of SRC) {
+  const t = read(f);
+  for (const m of t.matchAll(/var\(--([a-z0-9-]+)/g)) if (!defined.has(m[1]) && !LOCAL.has(m[1]) && !['acc', 'on'].includes(m[1])) err(f, `第 ${lineOf(t, m.index)} 行用了未定义的 token --${m[1]}`);
+}
 
 /* 4. base.css 与 components.css 里不写颜色字面量；app.css 里的字面量只报提醒 */
 const LIT = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)v]*\)/g;
@@ -44,11 +51,14 @@ for (const f of ['styles/base.css', 'styles/components.css']) {
   else if (n) warn(f, `还有 ${n} 处颜色字面量（基线 ${BASELINE}）`);
 }
 
-/* 5. app.js 里的 style="..." 只允许传数据（自定义属性或模板插值），布局用工具类 */
-for (const m of app.matchAll(/style="([^"]*)"/g)) {
-  const v = m[1];
-  if (/^--[a-z]+:\$\{/.test(v) || v.includes('${') || /^position:|^margin:0;height:100vh|^font:400 13px/.test(v)) continue;
-  err('app.js', `第 ${lineOf(app, m.index)} 行有内联样式 style="${v.slice(0, 40)}"，请用 styles/base.css 里的工具类`);
+/* 5. src/ 里的 style="..." 只允许传数据（自定义属性或模板插值），布局用工具类 */
+for (const f of SRC) {
+  const t = read(f);
+  for (const m of t.matchAll(/style="([^"]*)"/g)) {
+    const v = m[1];
+    if (/^--[a-z]+:\$\{/.test(v) || v.includes('${') || /^position:|^margin:0;height:100vh|^font:400 13px/.test(v)) continue;
+    err(f, `第 ${lineOf(t, m.index)} 行有内联样式 style="${v.slice(0, 40)}"，请用 styles/base.css 里的工具类`);
+  }
 }
 
 /* 6. 设计系统导出与 tokens.css 同步 */
