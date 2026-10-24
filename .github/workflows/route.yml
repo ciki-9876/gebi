@@ -1,0 +1,23 @@
+name: route
+# 给 PR 打评审档位（lane:*），并在 ready-for-review 且没有人接手时自动指派评审者。规则见 AGENTS.md。
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, labeled, synchronize]
+concurrency:
+  group: route-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tools/route-pr.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

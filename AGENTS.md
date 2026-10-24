@@ -22,7 +22,7 @@
 
 3. **读规范**：本文件、[`CONTRIBUTING.md`](CONTRIBUTING.md)，以及和任务相关的 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)、[`docs/DESIGN.md`](docs/DESIGN.md)、[`docs/SDK.md`](docs/SDK.md)。已经定下的事记在 [`docs/decisions/`](docs/decisions/)，不要重新争论。
 4. **同步主干**：`git fetch origin main`，从最新的 `main` 切分支。
-5. **看黑板**：打开的 issue 和 PR 里，有没有交给你的（`handoff:<你的名字>`）、等你修改的、等人评审的（`ready-for-review`）。
+5. **看黑板**：运行 `node tools/board.mjs <你的名字>`（需要 `gh` 已登录），它会列出待你评审的 PR、等你修改的 PR、可以由你合并的 PR、指派给你的 issue。只有这一行输出“现在没有需要你处理的事”时，才算没事。
 
 ## 身份：同一个账号，用四处标记区分
 
@@ -72,12 +72,34 @@ PR 描述的第一项“作者”也写上你的名字。在 issue 和 PR 里发
 1. 文件:行号，问题，建议怎么改（没有就写“无”）
 ```
 
+### 评审档位
+
+路由机器人会按改动自动给 PR 打 `lane:*` 标签（改动变了会自动换），评审的深度跟着档位走，别人只改文档的 PR 不用你搭一整套复现：
+
+| 档位 | 什么时候 | 评审者要做的 |
+| --- | --- | --- |
+| `lane:light` | 只改 `.md`，或者改动不超过 50 行（不含生成文件）且不碰 `src/` | 快速读一遍 diff，确认 `check`、`identity` 通过，没有明显问题就通过。不需要独立复现 |
+| `lane:standard` | 其余的功能和修复 | 按下面的格式完整评审：读改动、跑检查、走相关的验收路径 |
+| `lane:heavy` | 改到 `.github/`、`tools/`、`AGENTS.md`、`docs/agents/`、`docs/decisions/`、`docs/PUBLISH.md`、`docs/ARCHITECTURE.md`、`docs/DESIGN.md`、`design-system/`、`styles/tokens.css`、`src/12-cloud.js`（数据模型） | 必须独立复现：自己写或跑一个测试，评审评论里写明复现了什么、结果是什么 |
+
+档位只管评审的深度，不改变其他规则：作者不能评审和合并自己的 PR，三项检查必须全绿。作者在 PR 描述的“怎么验证”里写清楚验证了什么，评审者才能少做重复的事；有可复用的测试脚本，直接说在哪里。
+
 ### 合并与发布
 
 - 由**评审者**合并，作者不能合并自己的 PR。三项 CI 检查全部通过才能合并：`check`（代码规范）、`identity`（身份标记）、`review`（已由作者以外的人评审），`main` 的规则集会拦下不合规的合并。
 - 合并用网页上的按钮，或者 `gh api -X PUT repos/ciki-9876/gebi/pulls/<编号>/merge`。合并后，合并者能删除这个 PR 的分支就删除（`git push origin --delete <分支名>`）；所在环境不允许删除时不用管，已合并的分支留着没有影响。
 - 评审者所在的工具做不了合并时，在 PR 里评论说明，打上 `handoff:any`，请别的 Agent 合并。
 - 发布到 claude.ai 见下面“必须由房主做的事”。
+
+## 自动接力
+
+Agent 之间不能直接对话，也不会主动看 GitHub，所以“有事等你”要靠下面三件事自动传达，**不要让房主去通知别人**：
+
+1. **自动指派评审者**：PR 打上 `ready-for-review` 且没有任何 `handoff:*` 标签时，工作流 `route`（`tools/route-pr.mjs`）会从登记表里挑一个作者以外、手上待办最少的 Agent，自动打上 `handoff:<名字>` 并留言。作者不用自己指定评审者，开 PR 打上 `ready-for-review` 就行。只登记了一个 Agent 时，机器人会打 `needs-human`。
+2. **轮询**：每个 Agent 开工先跑 `node tools/board.mjs <名字>`，并且在工具支持时设一个每 20～30 分钟的定时检查。**定时检查先用脚本过滤**：`node tools/board.mjs <名字> --quiet` 没有待办时什么也不输出（退出码 0），有待办才输出（退出码 10），只有退出码是 10 才叫醒大模型，没事的时候不花 token。设置方法见 [`docs/agents/polling.md`](docs/agents/polling.md)。
+3. **作者那边**：作者订阅了自己的 PR（有这个能力的工具），评审意见、合并会自动叫醒作者，不需要轮询。
+
+处理完一件待办之后，再跑一遍 board，直到它说没有事了。
 
 ## 交接与求助
 
