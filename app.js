@@ -4473,6 +4473,10 @@ function typeOfName(name, mime) {
   if (/^text\//.test(mime || '')) return 'doc';
   return 'file';
 }
+// 强信号：关键字开头、;{} 结尾、整行是 name(...) 调用、单独的闭括号
+const CODE_STRONG = /^\s*(import |export |from \S+ import |def \w+\s*\(|class \w+\s*[:({]|class \w+ extends |(async )?function\b\s*[\w$]*\s*\(|async (def|\()|(const|let|var) [\w$[{][^=]*[=;]|return\b|package |#include|#!|SELECT |CREATE |INSERT |UPDATE |\/\/)|[;{}]\s*$|^\s*[\w$.]+\s*\(.*\)\s*;?\s*$|^\s*[)\]]+[;,]?\s*$/;
+// 弱信号：缩进（不含 Markdown 列表）、关键字开头以 : 结尾的块、赋值、装饰器
+const CODE_WEAK = /^(\t| {2,})(?![-*+] |\d+\. )\S|^\s*(if|elif|else|for|while|try|except|finally|with)\b.*:\s*$|^\s*[\w$.[\]]+\s*[-+*\/]?=[^=]|^\s*@\w/;
 // 粘贴的文本或 .html 文件：网页、小游戏、文档还是代码
 function sniffText(text) {
   const t = String(text || '').trim();
@@ -4480,9 +4484,10 @@ function sniffText(text) {
     return /<canvas\b/i.test(t) && /(keydown|requestAnimationFrame|gamepad|score)/i.test(t) ? 'game' : 'web';
   }
   if (/^[[{]/.test(t)) { try { JSON.parse(t); return 'data'; } catch (e) {} }
-  const lines = t.split('\n'), md = lines.filter(l => /^(#{1,6} |[-*] |\d+\. |> |```)/.test(l)).length;
-  const code = lines.filter(l => /^(import |export |from |def |class |function |const |let |var |package |#include|SELECT |CREATE )|[;{}]\s*$/.test(l)).length;
-  return code > md * 2 && code > lines.length * .25 ? 'data' : 'doc';
+  const lines = t.split('\n').filter(l => l.trim()), md = lines.filter(l => /^(#{1,6} |[-*] |\d+\. |> |```)/.test(l)).length;
+  const strong = lines.filter(l => CODE_STRONG.test(l)).length, weak = lines.filter(l => !CODE_STRONG.test(l) && CODE_WEAK.test(l)).length;
+  // 至少一行强信号，避免把首行缩进的段落当成代码；空行不进分母，短片段也能过半
+  return strong > 0 && strong + weak >= md * 2 && strong + weak >= lines.length * .5 ? 'data' : 'doc';
 }
 function titleFromText(text, type) {
   const t = String(text || '');
