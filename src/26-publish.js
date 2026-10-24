@@ -32,9 +32,9 @@ async function fileItems(f) {
   }
   return [pubItem({ type, name, blob: f, size: f.size, mime: mimeOf(name, f.type) })];
 }
-function textItems(raw) {
+async function textItems(raw) {
   const text = String(raw || '').trim(); if (!text) return [];
-  if (/^\{\s*"gebi"/.test(text)) { try { return manifestItems(JSON.parse(text)); } catch (e) {} }
+  if (/^\{\s*"gebi"/.test(text)) { let m = null; try { m = JSON.parse(text); } catch (e) {} if (m) return manifestItems(m); }
   if (/^https?:\/\/\S+$/.test(text)) return [urlItem(text)];
   const t = sniffText(text), name = { web: 'index.html', game: 'index.html', doc: 'note.md', data: 'snippet.txt' }[t];
   return [pubItem({ type: t, name, text, size: textBytes(text), mime: mimeOf(name), title: titleFromText(text, t) })];
@@ -44,7 +44,7 @@ function urlItem(url, o = {}) {
   const guess = typeOfName(path), t = o.type && ART_TYPES[o.type] ? o.type : ['image', 'video', 'audio', 'pdf', 'model'].includes(guess) ? guess : 'web';
   return pubItem(Object.assign({ name: path.split('/').pop() || url, url, size: 0, mime: mimeOf(path) }, o, { type: t }));
 }
-function manifestItems(m, zipFiles) {
+async function manifestItems(m, zipFiles) {
   if (!m || typeof m !== 'object') throw artErr('发布清单格式不对，见 docs/PUBLISH.md。');
   const base = { title: String(m.title || '').slice(0, 30), desc: String(m.desc || '').slice(0, 80), made: String(m.made_with || '').slice(0, 30), carrier: m.carrier };
   const want = ART_TYPES[m.type] ? m.type : '';
@@ -57,6 +57,11 @@ function manifestItems(m, zipFiles) {
     return null;
   }).filter(Boolean);
   if (!files.length) throw artErr('发布清单里没有文件，也没有网址。');
+  if (files.length === 1 && files[0].bytes && /\.zip$/i.test(files[0].path)) {
+    const inner = await readZip(files[0].bytes.slice().buffer), mf = inner.find(x => x.path === 'gebi.json');
+    if (mf) { let im = {}; try { im = JSON.parse(new TextDecoder().decode(mf.bytes)); } catch (e) {} return manifestItems(Object.assign({}, im, Object.fromEntries(Object.entries(m).filter(([k, v]) => v && k !== 'files'))), inner.filter(x => x !== mf)); }
+    return manifestItems(Object.assign({}, m, { type: 'project', files: undefined }), inner);
+  }
   if (files.length === 1 && want !== 'project') {
     const f = files[0], type = want || typeOfName(f.path, f.mime);
     if (f.text == null && isTextName(f.path)) { try { f.text = new TextDecoder('utf-8', { fatal: true }).decode(f.bytes); } catch (e) {} }
@@ -120,8 +125,8 @@ async function pubAdd(seed) {
   const add = list => { PUB.items.push(...list); };
   try {
     if (seed.files) for (const f of [...seed.files].slice(0, 20)) { try { add(await fileItems(f)); } catch (e) { errs.push(e.friendly ? e.message : `${f.name} 读不出来`); } }
-    if (seed.text) add(textItems(seed.text));
-    if (seed.manifest) add(manifestItems(seed.manifest));
+    if (seed.text) add(await textItems(seed.text));
+    if (seed.manifest) add(await manifestItems(seed.manifest));
   } catch (e) { errs.push(e.friendly ? e.message : '没能识别这些内容'); }
   renderPublish(errs);
 }
@@ -131,6 +136,7 @@ function pubWarn(it) {
   if (st === 'work' && it.size > WORK_MAX) return `网页有 ${kb(it.size)}，超过了 200 KB。把图片换成链接，或者打包成 .zip 当作项目发布。`;
   if (st === 'project' && !it.files) return '只有项目包（.zip）或多个文件才能作为项目发布。';
   if ((st === 'work' || st === 'text') && it.text == null) return '这个文件不是文本，换一种类型试试。';
+  if (st === 'asset' && !it.blob && it.text == null) return '这个文件是空的。';
   if (it.size > ART_ASSET_MAX) return `文件有 ${mb(it.size)}，超过了 20 MB。压缩一下，或者放到网上后用网址发布。`;
   if ((it.type === 'model' || it.type === 'file') && it.blob && !assetType(it.name, it.mime) && it.size > DB_BLOB_MAX) return `这种文件只能存 2 MB 以内。放到网上后用网址发布。`;
   if (S.room.items.length + PUB.items.length > 80) return '房间里的物件快放满了（最多 80 件），先删掉一些。';
@@ -251,9 +257,9 @@ async function pubStore(it, i) {
     return e;
   }
   cardState(i, `正在上传 ${mb(it.size)}……`);
-  const ty = assetType(it.name, it.mime);
-  if (ty) art.asset = await putBlob(it.blob, ty);
-  else { await saveDbBlob(path, new Uint8Array(await it.blob.arrayBuffer()), it.mime); art.work = path; }
+  const ty = assetType(it.name, it.mime), blob = it.blob || new Blob([it.text || ''], { type: ty || it.mime || mimeOf(it.name) });
+  if (ty) art.asset = await putBlob(blob, ty);
+  else { await saveDbBlob(path, new Uint8Array(await blob.arrayBuffer()), it.mime); art.work = path; }
   e.art = art; return e;
 }
 async function pubCommit() {

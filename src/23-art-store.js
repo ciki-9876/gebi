@@ -54,7 +54,9 @@ async function saveDbBlob(base, bytes, mime) {
   await saveArtDoc(base, { kind: 'blob', mime, bytes: bytes.length, chunks: n });
 }
 async function loadDbBlob(path) {
-  const m = await loadArtDoc(path); if (!m || m.kind !== 'blob') return null;
+  const m = await loadArtDoc(path); if (!m) return null;
+  if (typeof m.text === 'string') return new Blob([m.text], { type: (assetType(m.name || '', '') || mimeOf(m.name || '', 'text/plain')).replace(/^text\/html$/, 'text/plain') + ';charset=utf-8' });
+  if (m.kind !== 'blob') return null;
   const parts = await Promise.all(Array.from({ length: clamp(+m.chunks || 0, 0, 40) }, (_, i) => loadArtDoc(`${path}-c${i}`)));
   return new Blob([b64ToBytes(parts.map(d => (d && d.b64) || '').join(''))], { type: String(m.mime || 'application/octet-stream') });
 }

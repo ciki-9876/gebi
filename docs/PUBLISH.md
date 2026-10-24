@@ -116,6 +116,7 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP#publish=z.<base64url(deflate-r
 - **`.gebi.zip`**：普通 zip 文件，根目录有 `gebi.json` 清单，其他文件就是作品文件。清单里不用再写 `files`。
 - **`.gebi.json`**：只有清单，文件内容都写在 `files` 里。适合只能输出文本的 AI。
 - 没有清单的普通 `.zip` 也可以，按项目处理。
+- 清单（或发布包）里只有一个 `.zip` 文件时，隔壁会把它解开，按里面的 `gebi.json` 或项目处理。所以发布工具直接打包一个项目 zip 也能用。
 
 ## 发布工具（MCP）
 
