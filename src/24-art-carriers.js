@@ -22,9 +22,13 @@ function artCover(entry, cw, ch, opts = {}) {
 function playMark(g, x, y, r) { g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(x - r * .32, y - r * .5); g.lineTo(x + r * .56, y); g.lineTo(x - r * .32, y + r * .5); g.fill(); }
 function screenPlane(c, w, h, k = 1.05) { return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texOf(c), color: new THREE.Color(k, k, k) })); }
 function paperPlane(c, w, h) { return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: texOf(c), roughness: .9 })); }
+// 图片的尺寸在 naturalWidth，视频在 videoWidth（video.width 是 0）；拿不到尺寸时不画，返回 false
 function paintFit(c, src, bg) {
-  const g = c.getContext('2d'), r = Math.min(c.width / src.width, c.height / src.height), w = src.width * r, h = src.height * r;
+  const sw = src.videoWidth || src.naturalWidth || src.width, sh = src.videoHeight || src.naturalHeight || src.height;
+  if (!(sw > 0 && sh > 0)) return false;
+  const g = c.getContext('2d'), r = Math.min(c.width / sw, c.height / sh), w = sw * r, h = sh * r;
   g.fillStyle = bg || '#0a0a0e'; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, (c.width - w) / 2, (c.height - h) / 2, w, h);
+  return true;
 }
 function legs(g, mat, w, d, h, t = .05) { [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => mesh(BG(t, h, t), mat, a * (w / 2 - t), h / 2, b * (d / 2 - t), g)); }
 const isArt = (e, t) => !!(e && e.art && e.art.t === t);
@@ -49,7 +53,7 @@ function videoPoster(e, c, sc) {
     const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.playsInline = true; v.src = u;
     v.addEventListener('loadeddata', () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 3); } catch (x) {} }, { once: true });
     v.addEventListener('seeked', () => {
-      try { paintFit(c, v); } catch (x) { return; }
+      try { if (!paintFit(c, v)) return; } catch (x) { return; }
       const W = c.width, H = c.height, x = c.getContext('2d'), gr = x.createLinearGradient(0, H * .62, 0, H);
       gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.75)'); x.fillStyle = gr; x.fillRect(0, H * .62, W, H * .38);
       x.fillStyle = '#fff'; x.font = `700 ${Math.round(W / 20)}px ${FONT.body}`; x.fillText(wrapText(x, e.title || '视频', W * .92, 1)[0] || '', W * .04, H * .94);

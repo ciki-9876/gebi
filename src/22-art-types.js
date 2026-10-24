@@ -79,6 +79,12 @@ function sniffText(text) {
   const code = lines.filter(l => /^(import |export |from |def |class |function |const |let |var |package |#include|SELECT |CREATE )|[;{}]\s*$/.test(l)).length;
   return code > md * 2 && code > lines.length * .25 ? 'data' : 'doc';
 }
+function isJsonText(text) { const t = String(text || '').trim(); if (!/^[[{]/.test(t)) return false; try { JSON.parse(t); return true; } catch (e) { return false; } }
+// 至少两行、每行逗号数相同、第二行有数字：当作 CSV 表格
+function isCsvText(text) {
+  const L = String(text || '').trim().split(/\r?\n/).filter(Boolean); if (L.length < 2 || /[<{}]/.test(L[0])) return false;
+  const n = L[0].split(',').length; return n > 1 && L.every(l => l.split(',').length === n) && L[1].split(',').some(v => v.trim() !== '' && !isNaN(+v));
+}
 function titleFromText(text, type) {
   const t = String(text || '');
   if (type === 'web' || type === 'game') { const m = /<title>([^<]{1,60})<\/title>/i.exec(t) || /<h1[^>]*>([^<]{1,60})<\/h1>/i.exec(t); if (m) return m[1].trim(); }

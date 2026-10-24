@@ -39,7 +39,8 @@ async function textItems(raw) {
   const text = String(raw || '').trim(); if (!text) return [];
   if (/^\{\s*"gebi"/.test(text)) { let m = null; try { m = JSON.parse(text); } catch (e) {} if (m) return manifestItems(m); }
   if (/^https?:\/\/\S+$/.test(text)) return [urlItem(text)];
-  const t = sniffText(text), name = { web: 'index.html', game: 'index.html', doc: 'note.md', data: 'snippet.txt' }[t];
+  const csv = isCsvText(text), t = csv ? 'data' : sniffText(text);
+  const name = t === 'data' ? (csv ? 'data.csv' : isJsonText(text) ? 'data.json' : 'snippet.txt') : { web: 'index.html', game: 'index.html', doc: 'note.md' }[t];
   return [pubItem({ type: t, name, text, size: textBytes(text), mime: mimeOf(name), title: titleFromText(text, t) })];
 }
 function urlItem(url, o = {}) {
@@ -144,6 +145,9 @@ async function pubAdd(seed) {
   renderPublish(errs);
 }
 function pubWarn(it) {
+  const tg = pubTarget(), intoTarget = tg && PUB.items[0] === it;
+  if (intoTarget && !ART_CATS[it.cat].carriers.includes(tg.userData.def.type)) return `「${nameOf(tg)}」放不了${ART_CATS[it.cat].label}的作品。换一件物件，或者先把这件移除。`;
+  if (S.room.items.length + PUB.items.length - (tg ? 1 : 0) > 80) return '房间里的物件快放满了（最多 80 件），先删掉一些。';
   if (it.url) return '';
   const st = ART_TYPES[it.type].store;
   if (st === 'work' && it.size > WORK_MAX) return `网页有 ${kb(it.size)}，超过了 200 KB。把图片换成链接，或者打包成 .zip 当作项目发布。`;
@@ -152,9 +156,6 @@ function pubWarn(it) {
   if (st === 'asset' && !it.blob && it.text == null) return '这个文件是空的。';
   if (it.size > ART_ASSET_MAX) return `文件有 ${mb(it.size)}，超过了 20 MB。压缩一下，或者放到网上后用网址发布。`;
   if ((it.type === 'model' || it.type === 'file') && it.blob && !assetType(it.name, it.mime) && it.size > DB_BLOB_MAX) return `这种文件只能存 2 MB 以内。放到网上后用网址发布。`;
-  if (S.room.items.length + PUB.items.length > 80) return '房间里的物件快放满了（最多 80 件），先删掉一些。';
-  const tg = pubTarget();
-  if (tg && PUB.items[0] === it && !ART_CATS[it.cat].carriers.includes(tg.userData.def.type)) return `「${nameOf(tg)}」放不了${ART_CATS[it.cat].label}的作品。换一件物件，或者先把这件移除。`;
   return '';
 }
 function pubTarget() { const g = PUB.target ? findGroup(PUB.target) : null; return g && S.room && S.room.mine ? g : null; }
@@ -311,11 +312,16 @@ async function pubCommit() {
 }
 
 /* ---------- an empty object from the catalog ---------- */
+// 属于某个展示类别、还没有作品（没有托管内容、没有网址、不是收藏来的）的物件
+function isEmptyCarrier(g) {
+  const d = g && g.userData.def, e = d && d.entry;
+  return !!(e && !g.userData.isChild && carrierCats(d.type).length && !e.art && !e.work && !validUrl(e.url) && !e.from && (ART_KINDS.includes(e.kind) || BIND_KINDS.includes(e.kind)));
+}
 function openEmptyCarrier(g) {
   const cats = carrierCats(g.userData.def.type).map(c => ART_CATS[c]), mine = !!(S.room && S.room.mine);
   beginPanel('emptyCarrier', g);
   setPanel(cats.map(c => c.label).join(' · ') || '物件', nameOf(g), mine
-    ? `<p>这件${esc(nameOf(g))}还空着。它适合${esc(cats.map(c => c.label + '（' + c.note + '）').join('、'))}。</p><p class="mute small">发布一件 AI 做的作品进来，访客点它就能打开。</p>`
+    ? `<p>这件${esc(nameOf(g))}还空着。它适合${esc(cats.map(c => c.label + '（' + c.note + '）').join('、'))}。</p><p class="mute small">发布一件 AI 做的作品进来，访客点它就能打开。${BIND_KINDS.includes(g.userData.def.entry.kind) ? '已经部署在网上的作品，也可以在装修模式里选中它，填上作品地址。' : ''}</p>`
     : `<p>房主还没把作品放进这件${esc(nameOf(g))}。</p><p class="mute small">过些天再来看看，或者给房主留言催一催。</p>`,
     mine ? '<button type="button" class="btn primary" id="ecPub">发布作品到这里</button>' : '');
   const b = $('#ecPub'); if (b) b.addEventListener('click', () => openPublish({ target: g.userData.iid }));
