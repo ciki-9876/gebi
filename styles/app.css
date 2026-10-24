@@ -620,3 +620,7 @@ pre.code .c { color: var(--text-3); } pre.code .s { color: var(--accent-text); }
 .pub-drop.over { border-color: var(--accent); background: var(--accent-soft); }
 .pub-more summary { margin-top: var(--sp-3); color: var(--text-2); font-size: var(--fs-sm); cursor: pointer; }
 .pub-more pre { margin: var(--sp-2) 0 0; padding: var(--sp-3); border-radius: var(--r-md); background: var(--surface-2); font-family: var(--font-mono); font-size: var(--fs-xs); white-space: pre-wrap; overflow: auto; }
+
+/* ---------- 物件库的分类（src/19-chrome.js） ---------- */
+.cat-tabs { margin: 0 2px var(--sp-2); overflow-x: auto; flex-wrap: nowrap; max-width: 100%; }
+.cat-tabs button { flex: none; }

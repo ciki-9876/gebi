@@ -356,6 +356,7 @@ function renderInspector(g) {
     ${movable ? `<div class="u-row u-mb4"><button type="button" class="btn" id="inRot">${ICON.rot}旋转 90°</button>${meta.nodelete ? '' : `<button type="button" class="btn danger" id="inDel">${ICON.del}删除</button>`}</div>` : ''}
     <div class="divider u-mt0"></div>
     <p class="section-t">绑定作品</p>
+    ${carrierCats(def.type).length && !isChild ? `<p class="mute small u-mb3">这件物件适合${esc(carrierCats(def.type).map(c => ART_CATS[c].label).join("、"))}的作品。</p><button type="button" class="btn u-mb4" id="inPub">发布 AI 作品到这件物件</button>` : ''}
     ${!e ? `<p class="mute small u-mb3">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : kept ? `<p class="small u-mb3"><span class="tag">收藏品</span> 收藏自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」</p><p class="mute small u-m0">作品属于原作者，这里只负责展示它：访客点开会链回 TA 的房间。想改成自己的版本，请去原房间点“改编一份”。不想留了，直接删除这件物件就行。</p>` : `
     <form id="inForm">
       ${e.from ? `<p class="small u-mb3"><span class="tag pink">改编</span> 改编自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」，署名会一直保留。</p>` : ''}
@@ -378,6 +379,7 @@ function renderInspector(g) {
   const rot = $('#inRot'); if (rot) rot.addEventListener('click', () => rotateSelected());
   const sdk = $('#inSdk'); if (sdk) sdk.addEventListener('click', openSdkGuide);
   const del = $('#inDel'); if (del) del.addEventListener('click', () => deleteSelected());
+  const ip = $('#inPub'); if (ip) ip.addEventListener('click', () => openPublish({ target: g.userData.iid }));
   const mk = $('#inMake'); if (mk) mk.addEventListener('click', () => { def.entry = { kind: 'web', title: nameOf(g), desc: '', url: '' }; renderInspector(g); });
   const ub = $('#inUnbind'); if (ub) ub.addEventListener('click', () => { delete def.entry; saveLayout(); rebuildFor(g); toast('已解除绑定，它又变回装饰了'); });
   let kind = kindSel, openMode = e && e.open === 'tab' ? 'tab' : 'embed', winSize = e ? (e.size || (/game/.test(e.kind) ? 'wide' : 'tall')) : 'tall';

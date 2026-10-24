@@ -86,9 +86,14 @@ $('#resetRoom').addEventListener('click', () => {
 });
 $('#likeBtn').addEventListener('click', () => { if (!S.room) return; S.liked[S.room.id] = !S.liked[S.room.id]; store.set('gebi.liked', S.liked); syncChrome(); if (S.liked[S.room.id]) toast(`为 ${S.room.owner} 的房间点亮了一颗星`); });
 bubble.addEventListener('click', () => { const g = findGroup('robot'); if (g) activate(g); });
+let catTab = 'decor';
 function renderCatalog() {
-  $('#catalog').innerHTML = Object.entries(ITEMS).filter(([, m]) => m.catalog).map(([k, m]) => `<button type="button" class="cat" data-t="${k}"><svg viewBox="0 0 40 34" aria-hidden="true">${CAT_ICON[k] || ''}</svg>${m.name}<small>${m.entry ? KIND_LABEL[m.entry.kind] : '装饰'}</small></button>`).join('');
+  const tabs = [['decor', '家具']].concat(Object.entries(ART_CATS).map(([k, c]) => [k, c.label.replace(/类$/, '')]));
+  $('#catTabs').innerHTML = tabs.map(([k, l]) => `<button type="button" data-c="${k}" aria-pressed="${k === catTab}">${l}</button>`).join('');
+  const keys = catTab === 'decor' ? Object.keys(ITEMS).filter(k => ITEMS[k].catalog && !carrierCats(k).length) : ART_CATS[catTab].carriers;
+  $('#catalog').innerHTML = keys.map(k => [k, ITEMS[k]]).map(([k, m]) => `<button type="button" class="cat" data-t="${k}"><svg viewBox="0 0 40 34" aria-hidden="true">${CAT_ICON[k] || ''}</svg>${m.name}<small>${catTab === 'decor' ? (m.entry ? KIND_LABEL[m.entry.kind] : '装饰') : esc(ART_CATS[catTab].label)}</small></button>`).join('');
 }
+$('#catTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; catTab = b.dataset.c; renderCatalog(); });
 $('#catalog').addEventListener('click', e => { const b = e.target.closest('.cat'); if (b) addFromCatalog(b.dataset.t); });
 $('#goMine').addEventListener('click', () => { if (S.busy) return; const mr = CLOUD.ready ? myResident() : null; diveInto(mr || RESIDENTS.find(r => r.preset === 'mine')); });
 $('#bell').addEventListener('click', () => openInbox());

@@ -49,7 +49,7 @@ function activate(g) {
     case 'music': walkTo(g, { panel: false }); toggleMusic(); break;
     case 'door': exitToGlobe(); break;
     case 'view': lookOutside(g); break;
-    default: if (e.art || canEmbed(e)) openWindow(g); else openEntry(g);
+    default: if (!e.art && ART_KINDS.includes(e.kind)) openEmptyCarrier(g); else if (e.art || canEmbed(e)) openWindow(g); else openEntry(g);
   }
 }
 function beginPanel(kind, g) { if (S.win) minimizeWin(S.win, true); if (S.panel) closePanel(true); S.panel = { kind, g }; S.focus = g; if (g) focusOn(g, { loose: kind === 'agent' }); }

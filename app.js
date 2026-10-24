@@ -2840,7 +2840,7 @@ function activate(g) {
     case 'music': walkTo(g, { panel: false }); toggleMusic(); break;
     case 'door': exitToGlobe(); break;
     case 'view': lookOutside(g); break;
-    default: if (e.art || canEmbed(e)) openWindow(g); else openEntry(g);
+    default: if (!e.art && ART_KINDS.includes(e.kind)) openEmptyCarrier(g); else if (e.art || canEmbed(e)) openWindow(g); else openEntry(g);
   }
 }
 function beginPanel(kind, g) { if (S.win) minimizeWin(S.win, true); if (S.panel) closePanel(true); S.panel = { kind, g }; S.focus = g; if (g) focusOn(g, { loose: kind === 'agent' }); }
@@ -3441,6 +3441,7 @@ function renderInspector(g) {
     ${movable ? `<div class="u-row u-mb4"><button type="button" class="btn" id="inRot">${ICON.rot}旋转 90°</button>${meta.nodelete ? '' : `<button type="button" class="btn danger" id="inDel">${ICON.del}删除</button>`}</div>` : ''}
     <div class="divider u-mt0"></div>
     <p class="section-t">绑定作品</p>
+    ${carrierCats(def.type).length && !isChild ? `<p class="mute small u-mb3">这件物件适合${esc(carrierCats(def.type).map(c => ART_CATS[c].label).join("、"))}的作品。</p><button type="button" class="btn u-mb4" id="inPub">发布 AI 作品到这件物件</button>` : ''}
     ${!e ? `<p class="mute small u-mb3">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : kept ? `<p class="small u-mb3"><span class="tag">收藏品</span> 收藏自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」</p><p class="mute small u-m0">作品属于原作者，这里只负责展示它：访客点开会链回 TA 的房间。想改成自己的版本，请去原房间点“改编一份”。不想留了，直接删除这件物件就行。</p>` : `
     <form id="inForm">
       ${e.from ? `<p class="small u-mb3"><span class="tag pink">改编</span> 改编自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」，署名会一直保留。</p>` : ''}
@@ -3463,6 +3464,7 @@ function renderInspector(g) {
   const rot = $('#inRot'); if (rot) rot.addEventListener('click', () => rotateSelected());
   const sdk = $('#inSdk'); if (sdk) sdk.addEventListener('click', openSdkGuide);
   const del = $('#inDel'); if (del) del.addEventListener('click', () => deleteSelected());
+  const ip = $('#inPub'); if (ip) ip.addEventListener('click', () => openPublish({ target: g.userData.iid }));
   const mk = $('#inMake'); if (mk) mk.addEventListener('click', () => { def.entry = { kind: 'web', title: nameOf(g), desc: '', url: '' }; renderInspector(g); });
   const ub = $('#inUnbind'); if (ub) ub.addEventListener('click', () => { delete def.entry; saveLayout(); rebuildFor(g); toast('已解除绑定，它又变回装饰了'); });
   let kind = kindSel, openMode = e && e.open === 'tab' ? 'tab' : 'embed', winSize = e ? (e.size || (/game/.test(e.kind) ? 'wide' : 'tall')) : 'tall';
@@ -3702,9 +3704,14 @@ $('#resetRoom').addEventListener('click', () => {
 });
 $('#likeBtn').addEventListener('click', () => { if (!S.room) return; S.liked[S.room.id] = !S.liked[S.room.id]; store.set('gebi.liked', S.liked); syncChrome(); if (S.liked[S.room.id]) toast(`为 ${S.room.owner} 的房间点亮了一颗星`); });
 bubble.addEventListener('click', () => { const g = findGroup('robot'); if (g) activate(g); });
+let catTab = 'decor';
 function renderCatalog() {
-  $('#catalog').innerHTML = Object.entries(ITEMS).filter(([, m]) => m.catalog).map(([k, m]) => `<button type="button" class="cat" data-t="${k}"><svg viewBox="0 0 40 34" aria-hidden="true">${CAT_ICON[k] || ''}</svg>${m.name}<small>${m.entry ? KIND_LABEL[m.entry.kind] : '装饰'}</small></button>`).join('');
+  const tabs = [['decor', '家具']].concat(Object.entries(ART_CATS).map(([k, c]) => [k, c.label.replace(/类$/, '')]));
+  $('#catTabs').innerHTML = tabs.map(([k, l]) => `<button type="button" data-c="${k}" aria-pressed="${k === catTab}">${l}</button>`).join('');
+  const keys = catTab === 'decor' ? Object.keys(ITEMS).filter(k => ITEMS[k].catalog && !carrierCats(k).length) : ART_CATS[catTab].carriers;
+  $('#catalog').innerHTML = keys.map(k => [k, ITEMS[k]]).map(([k, m]) => `<button type="button" class="cat" data-t="${k}"><svg viewBox="0 0 40 34" aria-hidden="true">${CAT_ICON[k] || ''}</svg>${m.name}<small>${catTab === 'decor' ? (m.entry ? KIND_LABEL[m.entry.kind] : '装饰') : esc(ART_CATS[catTab].label)}</small></button>`).join('');
 }
+$('#catTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; catTab = b.dataset.c; renderCatalog(); });
 $('#catalog').addEventListener('click', e => { const b = e.target.closest('.cat'); if (b) addFromCatalog(b.dataset.t); });
 $('#goMine').addEventListener('click', () => { if (S.busy) return; const mr = CLOUD.ready ? myResident() : null; diveInto(mr || RESIDENTS.find(r => r.preset === 'mine')); });
 $('#bell').addEventListener('click', () => openInbox());
@@ -4312,7 +4319,7 @@ async function saveCard(r, card) {
 /* ---------- 装修：待上传清单 ---------- */
 function pendingWorks() {
   if (!S.room || !S.roomRoot) return [];
-  return S.room.items.filter(d => d.entry && BIND_KINDS.includes(d.entry.kind) && !validUrl(d.entry.url) && !d.entry.work && !d.entry.from).map(d => findGroup(d.uid)).filter(Boolean);
+  return S.room.items.filter(d => d.entry && !d.entry.from && ((BIND_KINDS.includes(d.entry.kind) && !validUrl(d.entry.url) && !d.entry.work) || (ART_KINDS.includes(d.entry.kind) && !d.entry.art))).map(d => findGroup(d.uid)).filter(Boolean);
 }
 function renderPendingRow() {
   const row = $('#pendingRow'); if (!row) return;
@@ -4431,8 +4438,9 @@ let toastT = 0;
 function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 
 /* ============================================================
-   AI artifacts · types: what each kind of AI output is, which
-   object carries it, where it is stored. Protocol: docs/PUBLISH.md
+   AI artifacts · types and display categories. A type says how a
+   work is stored and opened; its display category says which
+   objects can show it. Protocol: docs/PUBLISH.md
    ============================================================ */
 const ART_DB_MAX = 200 * 1024;
 const ART_ASSET_MAX = 20 * 1024 * 1024;
@@ -4441,18 +4449,44 @@ const ART_LINK_MAX = 48 * 1024;
 const TEXT_EXTS = ['html', 'htm', 'md', 'markdown', 'txt', 'json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini', 'env', 'gitignore', 'svg'];
 // store: work = 单文件网页（沿用托管作品）· text = 文本进数据库 · asset = 二进制进 assets · project = 拆成多份
 const ART_TYPES = {
-  web: { label: '网页', kind: 'web', carriers: ['kiosk', 'arcade', 'monitor'], store: 'work', exts: ['html', 'htm'] },
-  game: { label: '小游戏', kind: 'game2', carriers: ['arcade', 'kiosk'], store: 'work', exts: [] },
-  doc: { label: '文档', kind: 'doc', carriers: ['reader', 'monitor', 'crate'], store: 'text', exts: ['md', 'markdown', 'txt'] },
-  image: { label: '图片', kind: 'image', carriers: ['easel', 'kiosk', 'crate'], store: 'asset', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] },
-  video: { label: '视频', kind: 'video', carriers: ['tv', 'kiosk', 'crate'], store: 'asset', exts: ['mp4', 'webm', 'mov', 'm4v'] },
-  audio: { label: '音频', kind: 'audio', carriers: ['phono', 'crate'], store: 'asset', exts: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac'] },
-  pdf: { label: 'PDF', kind: 'pdf', carriers: ['reader', 'crate'], store: 'asset', exts: ['pdf'] },
-  project: { label: '项目', kind: 'project', carriers: ['workbench', 'serverRack', 'crate'], store: 'project', exts: ['zip'] },
-  model: { label: '3D 模型', kind: 'model', carriers: ['pedestal', 'crate'], store: 'asset', exts: ['glb', 'gltf'] },
-  data: { label: '代码与数据', kind: 'data', carriers: ['monitor', 'reader', 'crate'], store: 'text', exts: ['json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini'] },
-  file: { label: '文件', kind: 'file', carriers: ['crate'], store: 'asset', exts: [] }
+  web: { label: '网页', kind: 'web', store: 'work', exts: ['html', 'htm'] },
+  game: { label: '小游戏', kind: 'game2', store: 'work', exts: [] },
+  doc: { label: '文档', kind: 'doc', store: 'text', exts: ['md', 'markdown', 'txt'] },
+  image: { label: '图片', kind: 'image', store: 'asset', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] },
+  video: { label: '视频', kind: 'video', store: 'asset', exts: ['mp4', 'webm', 'mov', 'm4v'] },
+  audio: { label: '音频', kind: 'audio', store: 'asset', exts: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac'] },
+  pdf: { label: 'PDF', kind: 'pdf', store: 'asset', exts: ['pdf'] },
+  project: { label: '项目', kind: 'project', store: 'project', exts: ['zip'] },
+  model: { label: '3D 模型', kind: 'model', store: 'asset', exts: ['glb', 'gltf'] },
+  data: { label: '代码与数据', kind: 'data', store: 'text', exts: ['json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini'] },
+  file: { label: '文件', kind: 'file', store: 'asset', exts: [] }
 };
+// 展示类别：作品先归到类别，类别决定能放进哪些物件；第一个是默认物件
+const ART_CATS = {
+  web: { label: '网页类', note: '在浏览器里运行的作品', carriers: ['browser', 'kiosk', 'whiteboard'] },
+  game: { label: '游戏类', note: '能玩的网页小游戏', carriers: ['arcade', 'handheld', 'kiosk'] },
+  image: { label: '图片类', note: '插画、照片、海报、设计稿', carriers: ['easel', 'photoFrame', 'drawingBoard'] },
+  video: { label: '影像类', note: '视频、动画、录屏', carriers: ['tv', 'projector'] },
+  audio: { label: '声音类', note: '音乐、播客、音效', carriers: ['phono', 'speaker'] },
+  read: { label: '阅读类', note: '文章、笔记、文档、PDF', carriers: ['reader', 'magazineRack', 'noticeBoard'] },
+  code: { label: '代码类', note: '源码、脚本、跑不起来的项目', carriers: ['monitor', 'workbench', 'serverRack'] },
+  data: { label: '数据类', note: '表格、JSON 数据', carriers: ['dashboard', 'monitor'] },
+  solid: { label: '立体类', note: '3D 模型', carriers: ['pedestal', 'vitrine'] },
+  file: { label: '文件类', note: '其他文件', carriers: ['crate', 'fileCabinet'] }
+};
+const TYPE_CAT = { web: 'web', game: 'game', image: 'image', video: 'video', audio: 'audio', doc: 'read', pdf: 'read', model: 'solid', file: 'file' };
+// project 能在浏览器里跑（有 html）算网页类，否则算代码类；data 里的表格和 JSON 算数据类，其余算代码类
+function artCat(type, name, runnable) {
+  if (type === 'project') return runnable === false ? 'code' : 'web';
+  if (type === 'data') return /^(csv|tsv|json)$/.test(extOf(name)) ? 'data' : 'code';
+  return TYPE_CAT[type] || 'file';
+}
+function entryCat(e) {
+  if (!e) return null;
+  if (e.art) return ART_CATS[e.art.cat] ? e.art.cat : artCat(e.art.t, e.art.name);
+  return /game/.test(e.kind) ? 'game' : 'web';
+}
+function carrierCats(type) { return Object.keys(ART_CATS).filter(c => ART_CATS[c].carriers.includes(type)); }
 const ART_KINDS = Object.values(ART_TYPES).map(t => t.kind).filter(k => !['web', 'game2'].includes(k));
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', pdf: 'application/pdf', glb: 'model/gltf-binary', gltf: 'model/gltf+json', json: 'application/json', csv: 'text/csv', tsv: 'text/tab-separated-values', md: 'text/markdown', markdown: 'text/markdown', txt: 'text/plain', html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', ico: 'image/x-icon' };
 Object.assign(KIND_LABEL, { doc: '文档', image: '图片', video: '视频', audio: '音频', pdf: 'PDF', project: '项目', model: '3D 模型', data: '代码与数据', file: '文件' });
@@ -4490,7 +4524,7 @@ function titleFromText(text, type) {
   const h = /^#{1,2} +(.{1,60})$/m.exec(t); if (h) return h[1].trim();
   const first = t.split('\n').map(s => s.trim()).find(Boolean); return first ? first.replace(/^[#>*\-\s]+/, '').slice(0, 30) : '';
 }
-function artCarrier(type, want) { const d = ART_TYPES[type] || ART_TYPES.file; return d.carriers.includes(want) ? want : d.carriers[0]; }
+function artCarrier(cat, want) { const c = ART_CATS[cat] || ART_CATS.file; return c.carriers.includes(want) ? want : c.carriers[0]; }
 function carrierName(type) { return (ITEMS[type] && ITEMS[type].name) || type; }
 
 /* ---------- cleaning entry.art from other people's rooms ---------- */
@@ -4503,6 +4537,7 @@ function cleanArt(a, prefix, collected) {
   if (typeof a.work === 'string' && WORK_RE.test(a.work) && (!prefix || a.work.startsWith(prefix) || collected)) o.work = a.work;
   else if (!CLOUD.ready && typeof a.work === 'string' && /^local:[A-Za-z0-9_-]{1,60}$/.test(a.work)) o.work = a.work;
   if (a.made) o.made = String(a.made).slice(0, 30);
+  if (ART_CATS[a.cat]) o.cat = a.cat;
   if (a.w > 0 && a.h > 0) { o.w = Math.round(+a.w); o.h = Math.round(+a.h); }
   return o.asset || o.url || o.work ? o : null;
 }
@@ -4695,10 +4730,11 @@ async function loadProject(path) {
   return { title: String(m.title || ''), entry: String(m.entry || ''), readme: String(m.readme || ''), skipped: (m.skipped || []).map(String).slice(0, 40), bytes: +m.bytes || 0, files };
 }
 /* ============================================================
-   AI artifacts · carriers: the object each kind of artifact
-   lives in. The artifact itself shows on the object where it
-   can (picture on the easel, a frame on the TV, the model on
-   the pedestal); the rest show a cover drawn from the entry.
+   AI artifacts · carriers: the objects each display category
+   offers (ART_CATS in 22-art-types.js). The work itself shows on
+   the object where it can (the picture in a frame, a video frame
+   on a screen, the model in a case, a chart from the data); the
+   rest show a cover drawn from the entry.
    ============================================================ */
 function artCover(entry, cw, ch, opts = {}) {
   const c = mkCanvas(cw, ch), g = c.getContext('2d'), art = entry.art || {};
@@ -4711,33 +4747,183 @@ function artCover(entry, cw, ch, opts = {}) {
   g.globalAlpha = 1; g.font = `700 ${30 * s}px ${FONT.body}`;
   wrapText(g, entry.title || '未命名作品', cw - 36 * s, 2).forEach((l, i) => g.fillText(l, 18 * s, 78 * s + i * 38 * s));
   if (opts.lines) { g.globalAlpha = .35; for (let i = 0; i < opts.lines; i++) { g.fillStyle = ink; g.fillRect(18 * s, (150 + i * 16) * s, (cw - 36 * s) * (.55 + ((i * 37) % 40) / 100), 5 * s); } g.globalAlpha = 1; }
-  if (opts.play) { g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.arc(cw / 2, ch * .62, 34 * s, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(cw / 2 - 11 * s, ch * .62 - 17 * s); g.lineTo(cw / 2 + 19 * s, ch * .62); g.lineTo(cw / 2 - 11 * s, ch * .62 + 17 * s); g.fill(); }
+  if (opts.play) playMark(g, cw / 2, ch * .62, 34 * s);
   return c;
 }
+function playMark(g, x, y, r) { g.fillStyle = 'rgba(0,0,0,.4)'; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(x - r * .32, y - r * .5); g.lineTo(x + r * .56, y); g.lineTo(x - r * .32, y + r * .5); g.fill(); }
 function screenPlane(c, w, h, k = 1.05) { return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texOf(c), color: new THREE.Color(k, k, k) })); }
+function paperPlane(c, w, h) { return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({ map: texOf(c), roughness: .9 })); }
 function paintFit(c, src, bg) {
   const g = c.getContext('2d'), r = Math.min(c.width / src.width, c.height / src.height), w = src.width * r, h = src.height * r;
   g.fillStyle = bg || '#0a0a0e'; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, (c.width - w) / 2, (c.height - h) / 2, w, h);
 }
 function legs(g, mat, w, d, h, t = .05) { [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => mesh(BG(t, h, t), mat, a * (w / 2 - t), h / 2, b * (d / 2 - t), g)); }
+const isArt = (e, t) => !!(e && e.art && e.art.t === t);
 
+/* ---------- the work itself on the object ---------- */
+// 图片贴进 pic（尺寸 maxW × maxH），按图片比例缩放；onFit(w, h) 用来让外框跟着缩放
+function fitPicture(e, pic, maxW, maxH, onFit) {
+  if (!isArt(e, 'image')) return;
+  artUrl(e.art).then(u => u && loadImg(u)).then(img => {
+    if (!img) return;
+    const a = clamp(img.width / img.height, .4, 2.5), w = a >= maxW / maxH ? maxW : maxH * a, h = a >= maxW / maxH ? maxW / a : maxH;
+    const cc = mkCanvas(a >= 1 ? 768 : Math.round(768 * a), a >= 1 ? Math.round(768 / a) : 768); paintFit(cc, img);
+    pic.material.map = texOf(cc); pic.material.needsUpdate = true; pic.scale.set(w / maxW, h / maxH, 1);
+    if (onFit) onFit(w, h);
+  });
+}
+// 视频的一帧画到屏幕画布上，再叠上标题和播放键
+function videoPoster(e, c, sc) {
+  if (!isArt(e, 'video')) return;
+  artUrl(e.art).then(u => {
+    if (!u) return;
+    const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.playsInline = true; v.src = u;
+    v.addEventListener('loadeddata', () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 3); } catch (x) {} }, { once: true });
+    v.addEventListener('seeked', () => {
+      try { paintFit(c, v); } catch (x) { return; }
+      const W = c.width, H = c.height, x = c.getContext('2d'), gr = x.createLinearGradient(0, H * .62, 0, H);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.75)'); x.fillStyle = gr; x.fillRect(0, H * .62, W, H * .38);
+      x.fillStyle = '#fff'; x.font = `700 ${Math.round(W / 20)}px ${FONT.body}`; x.fillText(wrapText(x, e.title || '视频', W * .92, 1)[0] || '', W * .04, H * .94);
+      playMark(x, W / 2, H * .45, W / 13);
+      sc.material.map.needsUpdate = true; v.removeAttribute('src'); v.load();
+    }, { once: true });
+  });
+}
+let gltfLoaderP = null;
+function gltfLoader() {
+  return gltfLoaderP || (gltfLoaderP = new Promise((res, rej) => {
+    if (THREE.GLTFLoader) return res(new THREE.GLTFLoader());
+    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+    s.onload = () => res(new THREE.GLTFLoader()); s.onerror = () => { gltfLoaderP = null; rej(new Error('loader')); }; document.head.appendChild(s);
+  }));
+}
+// 占位的线框；模型加载好后换成模型，放在 y 高度、最大边长 size
+function modelOnto(e, g, y, size) {
+  const ph = mesh(new THREE.IcosahedronGeometry(size * .27, 1), new THREE.MeshBasicMaterial({ color: '#62e6ff', wireframe: true }), 0, y + size * .45, 0, g);
+  ph.onBeforeRender = () => { ph.rotation.y += .01; };
+  if (!isArt(e, 'model')) return;
+  Promise.all([artUrl(e.art), gltfLoader()]).then(([u, loader]) => {
+    if (!u) return;
+    loader.load(u, gl => {
+      const m = gl.scene, size3 = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3());
+      m.scale.setScalar(size / Math.max(size3.x, size3.y, size3.z, .001));
+      const b2 = new THREE.Box3().setFromObject(m), ctr = b2.getCenter(new THREE.Vector3());
+      m.position.set(-ctr.x, y - b2.min.y, -ctr.z); m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      g.remove(ph); g.add(m);
+    }, undefined, () => {});
+  }).catch(() => {});
+}
+// 表格或 JSON 里的一列数字画成柱状图
+function chartData(text, name) {
+  let rows = [];
+  try {
+    if (/\.json$/i.test(name || '')) {
+      const j = JSON.parse(text), arr = Array.isArray(j) ? j : Object.entries(j).map(([k, v]) => ({ k, v }));
+      rows = arr.slice(0, 12).map(o => { if (typeof o !== 'object' || !o) return [String(o), +o]; const ks = Object.keys(o), n = ks.find(k => typeof o[k] === 'number' || (o[k] !== '' && !isNaN(+o[k]))); return [String(o[ks.find(k => k !== n)] ?? ''), +o[n]]; });
+    } else {
+      const sep = /\.tsv$/i.test(name || '') ? '\t' : ',', L = text.split(/\r?\n/).filter(Boolean).map(l => l.split(sep).map(s => s.replace(/^"|"$/g, '').trim()));
+      const col = (L[1] || []).findIndex(v => v !== '' && !isNaN(+v));
+      if (col >= 0) rows = L.slice(1, 13).map(r => [r[col === 0 ? 1 : 0] || '', +r[col]]);
+    }
+  } catch (e) { rows = []; }
+  return rows.filter(r => isFinite(r[1]));
+}
+function drawChart(c, e, rows) {
+  const x = c.getContext('2d'), W = c.width, H = c.height;
+  x.fillStyle = '#0b1020'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#e8e4f0'; x.font = `700 ${Math.round(H / 12)}px ${FONT.body}`; x.fillText(wrapText(x, e.title || '数据', W * .9, 1)[0] || '', W * .04, H * .12);
+  x.strokeStyle = 'rgba(232,228,240,.12)'; x.lineWidth = 1;
+  for (let i = 0; i < 4; i++) { const y = H * (.28 + i * .18); x.beginPath(); x.moveTo(W * .04, y); x.lineTo(W * .96, y); x.stroke(); }
+  if (!rows.length) { x.fillStyle = 'rgba(232,228,240,.5)'; x.font = `${Math.round(H / 16)}px ${FONT.body}`; x.fillText('放进表格或 JSON 数据，这里会画成图表', W * .04, H * .6); return; }
+  const max = Math.max(...rows.map(r => Math.abs(r[1])), 1e-9), bw = W * .92 / rows.length, kc = KIND_COLOR.data;
+  rows.forEach(([lab, v], i) => {
+    const h = H * .6 * Math.abs(v) / max, bx = W * .04 + i * bw + bw * .15, by = H * .82 - h;
+    const gr = x.createLinearGradient(0, by, 0, H * .82); gr.addColorStop(0, kc[1]); gr.addColorStop(1, '#3d5afe'); x.fillStyle = gr; x.fillRect(bx, by, bw * .7, h);
+    x.fillStyle = 'rgba(232,228,240,.75)'; x.font = `${Math.round(Math.min(bw * .32, H / 20))}px ${FONT.mono}`; x.fillText(String(lab).slice(0, 6), bx, H * .9);
+  });
+}
+
+/* ---------- 网页类 ---------- */
+function browserCanvas(e) {
+  const c = mkCanvas(640, 400), x = c.getContext('2d'), kc = /^#[0-9a-f]{6}$/i.test(e.color || '') ? [e.color, shadeHex(e.color, -.4)] : (KIND_COLOR[e.kind] || KIND_COLOR.web);
+  x.fillStyle = '#dfe1e8'; x.fillRect(0, 0, 640, 400);
+  [['#ff5f57', 20], ['#febc2e', 40], ['#28c840', 60]].forEach(([col, px]) => { x.fillStyle = col; x.beginPath(); x.arc(px, 20, 6, 0, Math.PI * 2); x.fill(); });
+  x.fillStyle = '#f6f7fa'; rr(x, 84, 8, 200, 26, 7); x.fill();
+  x.fillStyle = '#3a3d48'; x.font = `500 13px ${FONT.body}`; x.fillText(wrapText(x, e.title || '新标签页', 176, 1)[0] || '', 98, 26);
+  x.fillStyle = '#f6f7fa'; rr(x, 16, 42, 608, 26, 13); x.fill();
+  x.fillStyle = '#7a7f8e'; x.font = `13px ${FONT.mono}`; x.fillText('gebi.room/' + (String(e.title || 'work').replace(/\s+/g, '-').slice(0, 30)), 34, 60);
+  const gr = x.createLinearGradient(0, 76, 640, 400); gr.addColorStop(0, kc[0]); gr.addColorStop(1, kc[1]); x.fillStyle = gr; x.fillRect(0, 76, 640, 324);
+  x.fillStyle = '#fff'; x.font = `700 40px ${FONT.body}`; wrapText(x, e.title || '网页作品', 560, 2).forEach((l, i) => x.fillText(l, 40, 170 + i * 50));
+  x.globalAlpha = .75; x.font = `16px ${FONT.body}`; x.fillText(wrapText(x, e.desc || '点开就能在这个窗口里浏览', 560, 1)[0] || '', 40, 290); x.globalAlpha = 1;
+  return c;
+}
+function buildBrowser(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'web', title: '网页' }, dark = M('#1c1c22', .4, .5);
+  mesh(rboxGeo(1, .05, .45, .02), dark, 0, .025, 0, g);
+  mesh(BG(.08, 1.05, .08), dark, 0, .55, -.05, g);
+  const head = new THREE.Group(); head.position.set(0, 1.6, 0); g.add(head);
+  mesh(rboxGeo(1.72, 1.1, .06, .04), M('#c9ccd6', .35, .4), 0, 0, 0, head);
+  const sc = screenPlane(browserCanvas(e), 1.64, 1.025); sc.position.z = .032; head.add(sc);
+  return g;
+}
+
+/* ---------- 游戏类 ---------- */
+function buildHandheld(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'game2', title: '小游戏' }, shell = M(e.color || '#d6d2c4', .55);
+  mesh(rboxGeo(.6, .55, .42, .04), M('#2a2a30', .5, .3), 0, .275, 0, g);
+  const body = new THREE.Group(); body.position.set(0, 1.08, 0); body.rotation.x = -.12; g.add(body);
+  mesh(rboxGeo(.62, 1.02, .14, .07), shell, 0, 0, 0, body);
+  mesh(BG(.5, .42, .01), M('#5b5f6b', .5), 0, .2, .071, body);
+  const c = artCover(e, 256, 224, { tag: '游戏' }), sc = screenPlane(c, .4, .34); sc.position.set(0, .2, .077); body.add(sc);
+  const dk = M('#26262c', .45);
+  mesh(BG(.16, .05, .03), dk, -.15, -.22, .075, body); mesh(BG(.05, .16, .03), dk, -.15, -.22, .075, body);
+  [[.12, -.25], [.21, -.18]].forEach(([px, py]) => { const b = mesh(CY(.04, .04, .03, 16), M('#a3245d', .4), px, py, .08, body); b.rotation.x = Math.PI / 2; });
+  [-.06, 0, .06].forEach(px => mesh(BG(.012, .07, .01), dk, .17 + px, -.4, .072, body));
+  return g;
+}
+
+/* ---------- 图片类 ---------- */
 function buildEasel(def) {
   const g = new THREE.Group(), wood = M('#8a5a2b', .6), e = def.entry || { kind: 'image', title: '画' };
   [[-.32, .12], [.32, .12]].forEach(([x, rz]) => { const l = mesh(BG(.05, 1.9, .05), wood, x, .95, .1, g); l.rotation.z = x < 0 ? -rz : rz; l.rotation.x = -.12; });
   const back = mesh(BG(.05, 1.8, .05), wood, 0, .9, -.32, g); back.rotation.x = .3;
   mesh(BG(.86, .05, .14), wood, 0, .62, .15, g);
   const board = new THREE.Group(); board.position.set(0, 1.18, .16); board.rotation.x = -.12; g.add(board);
-  const c = artCover(e, 512, 384, { tag: '图片' }), pic = screenPlane(c, .8, .6, 1); pic.position.z = .03; board.add(pic);
+  const pic = screenPlane(artCover(e, 512, 384, { tag: '图片' }), .8, .6, 1); pic.position.z = .03; board.add(pic);
   const frame = mesh(BG(.86, .66, .04), M('#2a1d12', .5), 0, 0, 0, board);
-  artUrl(e.art).then(u => u && loadImg(u)).then(img => {
-    if (!img) return;
-    const a = clamp(img.width / img.height, .4, 2.5), w = a >= 1 ? .8 : .6 * a, h = a >= 1 ? .8 / a : .6;
-    const cc = mkCanvas(a >= 1 ? 768 : Math.round(768 * a), a >= 1 ? Math.round(768 / a) : 768); paintFit(cc, img);
-    pic.material.map = texOf(cc); pic.material.needsUpdate = true; pic.scale.set(w / .8, h / .6, 1);
-    frame.scale.set((w + .06) / .86, (h + .06) / .66, 1);
-  });
+  fitPicture(e, pic, .8, .6, (w, h) => frame.scale.set((w + .06) / .86, (h + .06) / .66, 1));
   return g;
 }
+function buildPhotoFrame(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'image', title: '照片' }, wood = M('#5a3a24', .55);
+  mesh(rboxGeo(1.2, .72, .46, .03), wood, 0, .36, 0, g);
+  [-.3, .3].forEach(px => mesh(BG(.5, .26, .01), M('#4a2f1d', .6), px, .4, .232, g));
+  [-.3, .3].forEach(px => mesh(SPH(.022), M('#c9a24a', .3, .8), px, .4, .245, g));
+  const f = new THREE.Group(); f.position.set(0, 1.17, -.02); f.rotation.x = -.08; g.add(f);
+  const gold = M('#c9a24a', .32, .85);
+  const frame = mesh(BG(.92, .74, .05), gold, 0, 0, 0, f);
+  const mat = mesh(BG(.82, .64, .01), M('#f4efe4', .9), 0, 0, .027, f);
+  const pic = screenPlane(artCover(e, 512, 384, { tag: '照片' }), .7, .52, 1); pic.position.z = .034; f.add(pic);
+  const stand = mesh(BG(.04, .7, .04), wood, 0, -.02, -.16, f); stand.rotation.x = .45;
+  fitPicture(e, pic, .7, .52, (w, h) => { mat.scale.set((w + .12) / .82, (h + .12) / .64, 1); frame.scale.set((w + .22) / .92, (h + .22) / .74, 1); });
+  return g;
+}
+function buildDrawingBoard(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'image', title: '设计稿' }, metal = M('#3a3d45', .45, .6), wood = M('#d8c3a0', .6);
+  [-.5, .5].forEach(px => { const a = mesh(BG(.05, 1.05, .05), metal, px, .52, .18, g); a.rotation.x = -.3; const b = mesh(BG(.05, 1.05, .05), metal, px, .52, -.18, g); b.rotation.x = .3; });
+  mesh(BG(1.05, .04, .04), metal, 0, .3, 0, g);
+  const top = new THREE.Group(); top.position.set(0, 1.12, 0); top.rotation.x = -.85; g.add(top);
+  mesh(BG(1.2, .85, .04), wood, 0, 0, 0, top);
+  mesh(BG(1.2, .04, .07), metal, 0, -.44, .03, top);
+  const pic = screenPlane(artCover(e, 512, 384, { tag: '设计稿' }), .9, .66, 1); pic.position.z = .022; top.add(pic);
+  [-.38, .38].forEach(px => mesh(BG(.08, .03, .01), M('#c8c8d0', .3, .8), px, .33, .03, top));
+  const arm = mesh(BG(.03, .7, .03), metal, .62, 1.55, -.15, g); arm.rotation.z = -.4;
+  const lamp = mesh(CY(.04, .1, .12, 16, true), M('#e04646', .4), .78, 1.83, -.05, g); lamp.rotation.z = .9;
+  fitPicture(e, pic, .9, .66);
+  return g;
+}
+
+/* ---------- 影像类 ---------- */
 function buildTv(def) {
   const g = new THREE.Group(), e = def.entry || { kind: 'video', title: '视频' };
   mesh(rboxGeo(1.5, .46, .5, .04), M('#3a2c22', .6), 0, .23, 0, g);
@@ -4748,35 +4934,27 @@ function buildTv(def) {
   mesh(rboxGeo(1.46, .86, .06, .03), M('#0d0d12', .35, .3), 0, 0, 0, head);
   const c = artCover(e, 512, 288, { play: true, tag: '视频' }), sc = screenPlane(c, 1.38, .78); sc.position.z = .032; head.add(sc);
   g.userData.screen = { canvas: c, tex: sc.material.map, restore() {} };
-  artUrl(e.art).then(u => {
-    if (!u) return;
-    const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.playsInline = true; v.src = u;
-    v.addEventListener('loadeddata', () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 3); } catch (x) {} }, { once: true });
-    v.addEventListener('seeked', () => {
-      try { paintFit(c, v); } catch (x) { return; }
-      const x = c.getContext('2d'), gr = x.createLinearGradient(0, 180, 0, 288); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.75)');
-      x.fillStyle = gr; x.fillRect(0, 180, 512, 108); x.fillStyle = '#fff'; x.font = `700 26px ${FONT.body}`; x.fillText(wrapText(x, e.title || '视频', 470, 1)[0] || '', 20, 270);
-      x.fillStyle = 'rgba(0,0,0,.4)'; x.beginPath(); x.arc(256, 130, 40, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.moveTo(243, 110); x.lineTo(278, 130); x.lineTo(243, 150); x.fill();
-      sc.material.map.needsUpdate = true; v.removeAttribute('src'); v.load();
-    }, { once: true });
-  });
+  videoPoster(e, c, sc);
   return g;
 }
-function buildReader(def) {
-  const g = new THREE.Group(), e = def.entry || { kind: 'doc', title: '文档' }, wood = M('#4a3427', .6);
-  mesh(CY(.26, .3, .05, 20), wood, 0, .025, 0, g);
-  mesh(CY(.05, .06, .95, 12), wood, 0, .5, 0, g);
-  const top = new THREE.Group(); top.position.set(0, 1.02, 0); top.rotation.x = -.42; g.add(top);
-  mesh(BG(.74, .04, .52), wood, 0, 0, 0, top);
-  const pdf = e.kind === 'pdf';
-  [-1, 1].forEach(s => {
-    const c = s < 0 ? artCover(e, 256, 352, { paper: true, tag: pdf ? 'PDF' : '文档' }) : artCover({ kind: e.kind, title: e.desc || '' }, 256, 352, { paper: true, lines: 10, tag: ' ' });
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(.34, .47), new THREE.MeshStandardMaterial({ map: texOf(c), roughness: .9 }));
-    p.rotation.x = -Math.PI / 2; p.rotation.y = s * .06; p.position.set(s * .175, .032, 0); top.add(p);
-  });
-  mesh(BG(.02, .03, .48), M(pdf ? '#e04646' : '#8a5a2b', .5), 0, .03, 0, top);
+function buildProjector(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'video', title: '放映' }, metal = M('#2a2a30', .45, .6);
+  [-.85, .85].forEach(px => { mesh(BG(.04, 2.1, .04), metal, px, 1.05, -.2, g); mesh(BG(.3, .03, .3), metal, px, .015, -.2, g); });
+  mesh(BG(1.8, .08, .08), metal, 0, 2.12, -.2, g);
+  const c = artCover(e, 640, 360, { play: true, tag: '放映' }), sc = screenPlane(c, 1.62, .91, .95); sc.position.set(0, 1.55, -.17); g.add(sc);
+  mesh(BG(1.66, .02, .01), metal, 0, 1.08, -.18, g);
+  const pj = new THREE.Group(); pj.position.set(0, .2, .75); g.add(pj);
+  mesh(BG(.06, .4, .06), metal, 0, -.0, 0, pj);
+  mesh(rboxGeo(.34, .14, .28, .03), M('#e9e6ef', .5), 0, .26, 0, pj);
+  const lens = mesh(CY(.05, .05, .04, 20), GLOW('#e8f4ff', 1.6), 0, .26, -.15, pj); lens.rotation.x = Math.PI / 2;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.03, .75, .95, 24, 1, true), new THREE.MeshBasicMaterial({ color: '#cfe8ff', transparent: true, opacity: .05, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
+  beam.rotation.x = Math.PI / 2 + .55; beam.position.set(0, 1.0, .25); g.add(beam);
+  g.userData.screen = { canvas: c, tex: sc.material.map, restore() {} };
+  videoPoster(e, c, sc);
   return g;
 }
+
+/* ---------- 声音类 ---------- */
 function buildPhono(def) {
   const g = new THREE.Group(), e = def.entry || { kind: 'audio', title: '音乐' }, kc = KIND_COLOR.audio;
   mesh(rboxGeo(.8, .62, .6, .03), M('#5a3a24', .55), 0, .31, 0, g);
@@ -4789,45 +4967,64 @@ function buildPhono(def) {
   const c = artCover(e, 384, 96, { tag: '音频' }), plate = screenPlane(c, .6, .15); plate.position.set(0, .4, .305); g.add(plate);
   return g;
 }
-function buildWorkbench(def) {
-  const g = new THREE.Group(), e = def.entry || { kind: 'project', title: '项目' }, top = M('#6b4a2e', .6);
-  mesh(BG(1.7, .06, .8), top, 0, .9, 0, g); legs(g, M('#2a2a30', .5, .4), 1.7, .8, .87, .06);
-  mesh(BG(1.6, .04, .7), M('#3a2a1e', .7), 0, .3, 0, g);
-  const box = new THREE.Group(); box.position.set(-.35, .93, 0); g.add(box);
-  mesh(BG(.7, .42, .5), M('#c79a4a', .7), 0, .21, 0, box);
-  const c = artCover(e, 384, 224, { tag: '项目' }), lab = screenPlane(c, .62, .36, 1); lab.position.set(0, .21, .252); box.add(lab);
-  const lap = new THREE.Group(); lap.position.set(.45, .93, .05); g.add(lap);
-  mesh(BG(.5, .02, .34), M('#202028', .4, .5), 0, .01, 0, lap);
-  const scr = mesh(BG(.5, .32, .015), M('#202028', .4, .5), 0, .17, -.17, lap); scr.rotation.x = -.25;
-  const cc = artCover({ kind: 'data', title: e.title }, 256, 160, { lines: 4, tag: 'index.html' }), sp = screenPlane(cc, .46, .28); sp.position.set(0, .17, -.16); sp.rotation.x = -.25; lap.add(sp);
+function buildSpeaker(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'audio', title: '音乐' }, box = M('#2b2420', .6), cone = M('#141418', .5, .2), ring = M('#9a9aa6', .3, .8);
+  const cones = [];
+  [-.42, .42].forEach(px => {
+    mesh(rboxGeo(.38, 1.1, .36, .03), box, px, .55, 0, g);
+    [[.78, .07], [.38, .13]].forEach(([py, r]) => {
+      const rim = mesh(CY(r + .02, r + .02, .02, 28), ring, px, py, .18, g); rim.rotation.x = Math.PI / 2;
+      const c = mesh(CY(r, r * .4, .05, 28), cone, px, py, .2, g); c.rotation.x = -Math.PI / 2; cones.push(c);
+    });
+  });
+  const t0 = performance.now();
+  cones.forEach((c, i) => { c.onBeforeRender = () => { c.scale.y = S.artPlaying === def.uid ? 1 + .35 * Math.abs(Math.sin((performance.now() - t0) / 90 + i)) : 1; }; });
+  const plate = screenPlane(artCover(e, 384, 96, { tag: '音箱' }), .44, .11); plate.position.set(0, .3, .1); g.add(plate);
+  mesh(BG(.5, .02, .2), box, 0, .2, 0, g);
   return g;
 }
-let gltfLoaderP = null;
-function gltfLoader() {
-  return gltfLoaderP || (gltfLoaderP = new Promise((res, rej) => {
-    if (THREE.GLTFLoader) return res(new THREE.GLTFLoader());
-    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
-    s.onload = () => res(new THREE.GLTFLoader()); s.onerror = () => { gltfLoaderP = null; rej(new Error('loader')); }; document.head.appendChild(s);
-  }));
-}
-function buildPedestal(def) {
-  const g = new THREE.Group(), e = def.entry || { kind: 'model', title: '模型' };
-  mesh(CY(.36, .4, .9, 32), M('#e9e6ef', .5), 0, .45, 0, g);
-  mesh(CY(.41, .41, .02, 40), GLOW('#62e6ff', 1.3), 0, .91, 0, g);
-  const ph = mesh(new THREE.IcosahedronGeometry(.2, 1), new THREE.MeshBasicMaterial({ color: '#62e6ff', wireframe: true }), 0, 1.25, 0, g);
-  ph.onBeforeRender = () => { ph.rotation.y += .01; };
-  const c = artCover(e, 384, 96, { tag: '3D 模型' }), plate = screenPlane(c, .5, .125); plate.position.set(0, .7, .4); g.add(plate);
-  Promise.all([artUrl(e.art), gltfLoader()]).then(([u, loader]) => {
-    if (!u) return;
-    loader.load(u, gl => {
-      const m = gl.scene, box = new THREE.Box3().setFromObject(m), size = box.getSize(new THREE.Vector3()), k = .75 / Math.max(size.x, size.y, size.z, .001);
-      m.scale.setScalar(k); const b2 = new THREE.Box3().setFromObject(m), ctr = b2.getCenter(new THREE.Vector3());
-      m.position.set(-ctr.x, .92 - b2.min.y, -ctr.z); m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-      g.remove(ph); g.add(m);
-    }, undefined, () => {});
-  }).catch(() => {});
+
+/* ---------- 阅读类 ---------- */
+function buildReader(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'doc', title: '文档' }, wood = M('#4a3427', .6);
+  mesh(CY(.26, .3, .05, 20), wood, 0, .025, 0, g);
+  mesh(CY(.05, .06, .95, 12), wood, 0, .5, 0, g);
+  // 台面朝向站在前面的人倾斜
+  const top = new THREE.Group(); top.position.set(0, 1.02, 0); top.rotation.x = .42; g.add(top);
+  mesh(BG(.74, .04, .52), wood, 0, 0, 0, top);
+  const pdf = e.kind === 'pdf';
+  [-1, 1].forEach(s => {
+    const c = s < 0 ? artCover(e, 256, 352, { paper: true, tag: pdf ? 'PDF' : '文档' }) : artCover({ kind: e.kind, title: e.desc || '' }, 256, 352, { paper: true, lines: 10, tag: ' ' });
+    const p = paperPlane(c, .34, .47); p.rotation.x = -Math.PI / 2; p.rotation.y = s * .06; p.position.set(s * .175, .032, 0); top.add(p);
+  });
+  mesh(BG(.02, .03, .48), M(pdf ? '#e04646' : '#8a5a2b', .5), 0, .03, 0, top);
   return g;
 }
+function buildMagazineRack(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'doc', title: '杂志' }, wood = M('#8a5a2b', .6), r = rng(hash(def.uid));
+  [-.48, .48].forEach(px => { const s = mesh(BG(.05, 1.45, .4), wood, px, .72, 0, g); s.rotation.x = -.12; });
+  const tiers = [[.35, .14], [.82, .08], [1.28, .02]];
+  tiers.forEach(([py, pz], i) => {
+    mesh(BG(.92, .03, .16), wood, 0, py - .02, pz + .06, g);
+    mesh(BG(.92, .05, .02), wood, 0, py + .02, pz + .14, g);
+    const own = i === 1, c = own ? artCover(e, 256, 336, { tag: e.kind === 'pdf' ? 'PDF' : '阅读' }) : artCover({ kind: ['doc', 'pdf', 'image'][i], title: ['周末特刊', '', '设计年鉴'][i] }, 256, 336, { lines: 3 });
+    [-.24, .24].forEach((px, k) => { if (!own && k && r() < .3) return; const p = paperPlane(own && k ? artCover({ kind: 'doc', title: e.desc || '' }, 256, 336, { paper: true, lines: 12, tag: ' ' }) : c, .38, .5); p.position.set(px, py + .26, pz + .02); p.rotation.x = -.12; g.add(p); });
+  });
+  return g;
+}
+function buildNoticeBoard(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'doc', title: '告示' }, metal = M('#3a3d45', .45, .6);
+  [-.6, .6].forEach(px => { mesh(BG(.05, 1.75, .05), metal, px, .87, 0, g); mesh(BG(.06, .03, .5), metal, px, .015, 0, g); });
+  const board = new THREE.Group(); board.position.set(0, 1.35, .03); g.add(board);
+  mesh(BG(1.32, .92, .05), M('#6b4a2e', .6), 0, 0, 0, board);
+  mesh(BG(1.22, .82, .01), M('#b98a5a', .95), 0, 0, .027, board);
+  const page = paperPlane(artCover(e, 256, 340, { paper: true, lines: 9, tag: e.kind === 'pdf' ? 'PDF' : '告示' }), .42, .56); page.position.set(-.12, .01, .036); page.rotation.z = .02; board.add(page);
+  [['#ffe27a', .36, .2, -.05], ['#9be7c4', .38, -.18, .06]].forEach(([col, px, py, rz]) => { const n = mesh(BG(.2, .2, .004), M(col, .9), px, py, .034, board); n.rotation.z = rz; });
+  [[-.12, .27], [.36, .29], [.38, -.09]].forEach(([px, py]) => mesh(SPH(.018), M('#e04646', .4), px, py, .045, board));
+  return g;
+}
+
+/* ---------- 代码类 ---------- */
 function buildMonitor(def) {
   const g = new THREE.Group(), e = def.entry || { kind: 'data', title: '代码' };
   mesh(BG(1.1, .05, .62), M('#2a2a30', .5, .3), 0, .76, 0, g); legs(g, M('#1a1a20', .4, .5), 1.1, .62, .74, .04);
@@ -4843,23 +5040,120 @@ function buildMonitor(def) {
   g.userData.screen = { canvas: c, tex: sc.material.map, restore() {} };
   return g;
 }
+function buildWorkbench(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'project', title: '项目' }, top = M('#6b4a2e', .6);
+  mesh(BG(1.7, .06, .8), top, 0, .9, 0, g); legs(g, M('#2a2a30', .5, .4), 1.7, .8, .87, .06);
+  mesh(BG(1.6, .04, .7), M('#3a2a1e', .7), 0, .3, 0, g);
+  const box = new THREE.Group(); box.position.set(-.35, .93, 0); g.add(box);
+  mesh(BG(.7, .42, .5), M('#c79a4a', .7), 0, .21, 0, box);
+  const lab = screenPlane(artCover(e, 384, 224, { tag: '项目' }), .62, .36, 1); lab.position.set(0, .21, .252); box.add(lab);
+  const lap = new THREE.Group(); lap.position.set(.45, .93, .05); g.add(lap);
+  mesh(BG(.5, .02, .34), M('#202028', .4, .5), 0, .01, 0, lap);
+  const scr = mesh(BG(.5, .32, .015), M('#202028', .4, .5), 0, .17, -.17, lap); scr.rotation.x = -.25;
+  const sp = screenPlane(artCover({ kind: 'data', title: e.title }, 256, 160, { lines: 4, tag: 'index.html' }), .46, .28); sp.position.set(0, .17, -.16); sp.rotation.x = -.25; lap.add(sp);
+  return g;
+}
+
+/* ---------- 数据类 ---------- */
+function buildDashboard(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'data', title: '数据' }, dark = M('#1c1c22', .4, .5);
+  [-.6, .6].forEach(px => { mesh(BG(.06, 1.2, .06), dark, px, .6, 0, g); mesh(BG(.08, .03, .5), dark, px, .015, 0, g); });
+  const head = new THREE.Group(); head.position.set(0, 1.62, 0); g.add(head);
+  mesh(rboxGeo(1.5, .9, .07, .03), M('#0d0d12', .35, .3), 0, 0, 0, head);
+  mesh(BG(1.3, .015, .015), GLOW('#62e6ff', 1.2), 0, -.47, .03, head);
+  const c = mkCanvas(640, 380); drawChart(c, e, []);
+  const sc = screenPlane(c, 1.42, .84); sc.position.z = .037; head.add(sc);
+  if (isArt(e, 'data')) loadArtText(e.art).then(t => { if (t == null) return; drawChart(c, e, chartData(t, e.art.name)); sc.material.map.needsUpdate = true; });
+  return g;
+}
+
+/* ---------- 立体类 ---------- */
+function buildPedestal(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'model', title: '模型' };
+  mesh(CY(.36, .4, .9, 32), M('#e9e6ef', .5), 0, .45, 0, g);
+  mesh(CY(.41, .41, .02, 40), GLOW('#62e6ff', 1.3), 0, .91, 0, g);
+  const plate = screenPlane(artCover(e, 384, 96, { tag: '3D 模型' }), .5, .125); plate.position.set(0, .7, .4); g.add(plate);
+  modelOnto(e, g, .92, .75);
+  return g;
+}
+function buildVitrine(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'model', title: '藏品' }, white = M('#f1eee8', .5);
+  mesh(rboxGeo(.82, .82, .82, .02), white, 0, .41, 0, g);
+  mesh(BG(.86, .04, .86), M('#c9a24a', .3, .85), 0, .84, 0, g);
+  const glass = new THREE.Mesh(BG(.8, .82, .8), new THREE.MeshPhongMaterial({ color: '#9fb4c4', transparent: true, opacity: .1, shininess: 90, specular: '#ffffff', depthWrite: false }));
+  glass.position.y = 1.27; g.add(glass);
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => mesh(BG(.02, .82, .02), M('#c9a24a', .3, .85), a * .4, 1.27, b * .4, g));
+  mesh(BG(.84, .05, .84), white, 0, 1.7, 0, g);
+  const plate = screenPlane(artCover(e, 384, 96, { tag: '藏品' }), .5, .125); plate.position.set(0, .55, .415); g.add(plate);
+  modelOnto(e, g, .86, .6);
+  return g;
+}
+
+/* ---------- 文件类 ---------- */
 function buildCrate(def) {
   const g = new THREE.Group(), e = def.entry || { kind: 'file', title: '文件' }, wood = M('#9a6b3c', .75), dark = M('#6b4a2e', .75);
   mesh(BG(.8, .6, .7), wood, 0, .3, 0, g);
   [.08, .52].forEach(y => mesh(BG(.82, .06, .72), dark, 0, y, 0, g));
   [-1, 1].forEach(s => mesh(BG(.06, .62, .72), dark, s * .38, .3, 0, g));
-  const c = artCover(e, 384, 192, { tag: '文件' }), lab = screenPlane(c, .5, .25, 1); lab.position.set(0, .3, .352); g.add(lab);
+  const lab = screenPlane(artCover(e, 384, 192, { tag: '文件' }), .5, .25, 1); lab.position.set(0, .3, .352); g.add(lab);
   return g;
 }
-Object.assign(ITEMS, {
+function buildFileCabinet(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'file', title: '档案' }, metal = M('#7d8796', .45, .55), dark = M('#5d6676', .45, .55);
+  mesh(rboxGeo(.62, 1.32, .6, .02), metal, 0, .66, 0, g);
+  [1.07, .66, .25].forEach((py, i) => {
+    mesh(BG(.56, .36, .02), dark, 0, py, .305, g);
+    mesh(BG(.18, .03, .03), M('#c8c8d0', .3, .85), 0, py - .08, .325, g);
+    const lab = i === 0 ? screenPlane(artCover(e, 256, 96, { tag: '档案' }), .26, .1, 1) : paperPlane(artCover({ kind: 'file', title: '' }, 128, 48, { paper: true }), .16, .06);
+    lab.position.set(0, py + .07, .317); g.add(lab);
+  });
+  return g;
+}
+
+/* ---------- registry ---------- */
+const ART_ITEMS = {
+  browser: { name: '浏览器窗口', w: 1.8, d: .6, build: buildBrowser, entry: { kind: 'web', title: '新的网页', desc: '', url: '' } },
+  handheld: { name: '掌机', w: .8, d: .6, build: buildHandheld, entry: { kind: 'game2', title: '新的游戏', desc: '', url: '' } },
   easel: { name: '画架', w: .9, d: .8, build: buildEasel, entry: { kind: 'image', title: '新的画', desc: '', url: '' } },
+  photoFrame: { name: '相框', w: 1.2, d: .6, build: buildPhotoFrame, entry: { kind: 'image', title: '新的照片', desc: '', url: '' } },
+  drawingBoard: { name: '画板', w: 1.4, d: .9, build: buildDrawingBoard, entry: { kind: 'image', title: '新的设计稿', desc: '', url: '' } },
   tv: { name: '电视', w: 1.6, d: .7, build: buildTv, entry: { kind: 'video', title: '新的视频', desc: '', url: '' } },
-  reader: { name: '阅读台', w: .9, d: .8, build: buildReader, entry: { kind: 'doc', title: '新的文档', desc: '', url: '' } },
+  projector: { name: '投影幕', w: 1.9, d: 1.2, build: buildProjector, entry: { kind: 'video', title: '新的放映', desc: '', url: '' } },
   phono: { name: '唱片机', w: .9, d: .7, build: buildPhono, entry: { kind: 'audio', title: '新的音乐', desc: '', url: '' } },
-  workbench: { name: '工作台', w: 1.8, d: .9, build: buildWorkbench, entry: { kind: 'project', title: '新的项目', desc: '', url: '' } },
-  pedestal: { name: '展台', w: .9, d: .9, build: buildPedestal, entry: { kind: 'model', title: '新的模型', desc: '', url: '' } },
+  speaker: { name: '音箱', w: 1.3, d: .5, build: buildSpeaker, entry: { kind: 'audio', title: '新的声音', desc: '', url: '' } },
+  reader: { name: '阅读台', w: .9, d: .8, build: buildReader, entry: { kind: 'doc', title: '新的文档', desc: '', url: '' } },
+  magazineRack: { name: '杂志架', w: 1.1, d: .6, build: buildMagazineRack, entry: { kind: 'doc', title: '新的文章', desc: '', url: '' } },
+  noticeBoard: { name: '告示板', w: 1.4, d: .6, build: buildNoticeBoard, entry: { kind: 'doc', title: '新的告示', desc: '', url: '' } },
   monitor: { name: '显示器', w: 1.2, d: .8, build: buildMonitor, entry: { kind: 'data', title: '新的代码', desc: '', url: '' } },
-  crate: { name: '储物箱', w: .9, d: .8, build: buildCrate, entry: { kind: 'file', title: '新的文件', desc: '', url: '' } }
+  workbench: { name: '工作台', w: 1.8, d: .9, build: buildWorkbench, entry: { kind: 'project', title: '新的项目', desc: '', url: '' } },
+  dashboard: { name: '数据看板', w: 1.5, d: .6, build: buildDashboard, entry: { kind: 'data', title: '新的数据', desc: '', url: '' } },
+  pedestal: { name: '展台', w: .9, d: .9, build: buildPedestal, entry: { kind: 'model', title: '新的模型', desc: '', url: '' } },
+  vitrine: { name: '玻璃展柜', w: .9, d: .9, build: buildVitrine, entry: { kind: 'model', title: '新的藏品', desc: '', url: '' } },
+  crate: { name: '储物箱', w: .9, d: .8, build: buildCrate, entry: { kind: 'file', title: '新的文件', desc: '', url: '' } },
+  fileCabinet: { name: '档案柜', w: .7, d: .7, build: buildFileCabinet, entry: { kind: 'file', title: '新的档案', desc: '', url: '' } }
+};
+Object.entries(ART_ITEMS).forEach(([k, m]) => { ITEMS[k] = Object.assign({ catalog: true }, m); });
+['kiosk', 'arcade', 'whiteboard', 'serverRack'].forEach(k => { ITEMS[k].catalog = true; });
+Object.assign(CAT_ICON, {
+  browser: '<rect x="4" y="4" width="32" height="22" rx="2" fill="#c9ccd6"/><rect x="4" y="4" width="32" height="5" rx="2" fill="#dfe1e8"/><circle cx="7.5" cy="6.5" r="1" fill="#ff5f57"/><circle cx="10.5" cy="6.5" r="1" fill="#febc2e"/><circle cx="13.5" cy="6.5" r="1" fill="#28c840"/><rect x="6" y="11" width="28" height="13" fill="#3d5afe"/><rect x="19" y="26" width="2" height="5" fill="#a99db4"/><rect x="13" y="31" width="14" height="2" rx="1" fill="#a99db4"/>',
+  handheld: '<rect x="11" y="3" width="18" height="28" rx="3" fill="#d6d2c4"/><rect x="14" y="6" width="12" height="10" fill="#5b5f6b"/><rect x="15" y="7" width="10" height="8" fill="#ff9a3d"/><path d="M14 22h5M16.5 19.5v5" stroke="#26262c" stroke-width="2"/><circle cx="24" cy="23" r="1.6" fill="#a3245d"/><circle cx="26.5" cy="20.5" r="1.6" fill="#a3245d"/>',
+  easel: '<path d="M13 32 19 4h2l6 28" stroke="#8a5a2b" stroke-width="2" fill="none"/><rect x="9" y="7" width="22" height="16" fill="#2a1d12"/><rect x="11" y="9" width="18" height="12" fill="#ff9a3d"/><circle cx="16" cy="13" r="2" fill="#ffe27a"/><path d="M11 21l6-5 4 3 4-4 4 6z" fill="#ff5aa8"/>',
+  photoFrame: '<rect x="5" y="21" width="30" height="12" rx="1" fill="#5a3a24"/><rect x="10" y="3" width="20" height="17" fill="#c9a24a"/><rect x="12" y="5" width="16" height="13" fill="#f4efe4"/><rect x="14" y="7" width="12" height="9" fill="#7c4dff"/>',
+  drawingBoard: '<path d="M9 33l5-13M31 33l-5-13" stroke="#3a3d45" stroke-width="2"/><path d="M5 20 9 6h26l-4 14z" fill="#d8c3a0"/><path d="M10 18l2.6-9h17l-2.6 9z" fill="#ff9a3d"/>',
+  tv: '<rect x="4" y="5" width="32" height="19" rx="2" fill="#0d0d12"/><rect x="6" y="7" width="28" height="15" fill="#3d5afe"/><path d="M18 11v7l6-3.5z" fill="#fff"/><rect x="6" y="26" width="28" height="6" rx="1" fill="#3a2c22"/>',
+  projector: '<rect x="5" y="3" width="30" height="18" fill="#e9e6ef"/><path d="M17 9v6l5-3z" fill="#3d5afe"/><path d="M5 3v29M35 3v29" stroke="#2a2a30" stroke-width="1.5"/><path d="M20 30 12 21h16z" fill="#cfe8ff" opacity=".5"/><rect x="16" y="28" width="8" height="4" rx="1" fill="#e9e6ef"/>',
+  phono: '<rect x="6" y="12" width="28" height="20" rx="2" fill="#5a3a24"/><ellipse cx="18" cy="12" rx="10" ry="4" fill="#0b0b0f"/><ellipse cx="18" cy="12" rx="3" ry="1.2" fill="#7c4dff"/><path d="M30 8l-5 6" stroke="#c8c8d0" stroke-width="1.5"/>',
+  speaker: '<rect x="5" y="4" width="12" height="28" rx="1.5" fill="#2b2420"/><rect x="23" y="4" width="12" height="28" rx="1.5" fill="#2b2420"/><circle cx="11" cy="11" r="2.5" fill="#9a9aa6"/><circle cx="11" cy="23" r="4.5" fill="#9a9aa6"/><circle cx="29" cy="11" r="2.5" fill="#9a9aa6"/><circle cx="29" cy="23" r="4.5" fill="#9a9aa6"/>',
+  reader: '<path d="M20 31V18" stroke="#4a3427" stroke-width="3"/><path d="M8 13l12 3 12-3v8l-12 3-12-3z" fill="#f3ecdc"/><path d="M20 16v8" stroke="#8a5a2b"/>',
+  magazineRack: '<path d="M7 33 9 4M33 33 31 4" stroke="#8a5a2b" stroke-width="2"/><rect x="11" y="5" width="8" height="10" fill="#3d5afe"/><rect x="21" y="5" width="8" height="10" fill="#ff5aa8"/><rect x="11" y="19" width="8" height="10" fill="#c9a06a"/><rect x="21" y="19" width="8" height="10" fill="#34b88a"/>',
+  noticeBoard: '<rect x="5" y="4" width="30" height="21" fill="#6b4a2e"/><rect x="7" y="6" width="26" height="17" fill="#b98a5a"/><rect x="10" y="8" width="9" height="12" fill="#f3ecdc"/><rect x="22" y="9" width="7" height="7" fill="#ffe27a"/><path d="M8 25v8M32 25v8" stroke="#3a3d45" stroke-width="2"/>',
+  monitor: '<rect x="6" y="4" width="28" height="18" rx="1.5" fill="#0d0d12"/><path d="M9 9h8M11 13h12M9 17h6" stroke="#62e6ff" stroke-width="1.6"/><rect x="18" y="22" width="4" height="4" fill="#16161c"/><rect x="5" y="26" width="30" height="3" fill="#2a2a30"/>',
+  workbench: '<rect x="3" y="18" width="34" height="3" fill="#6b4a2e"/><path d="M5 21v12M35 21v12" stroke="#2a2a30" stroke-width="2"/><rect x="6" y="9" width="12" height="9" fill="#c79a4a"/><rect x="22" y="10" width="11" height="7" fill="#202028"/><rect x="23" y="11" width="9" height="5" fill="#34b88a"/>',
+  dashboard: '<rect x="4" y="4" width="32" height="20" rx="1.5" fill="#0b1020"/><rect x="8" y="16" width="4" height="5" fill="#62e6ff"/><rect x="14" y="11" width="4" height="10" fill="#62e6ff"/><rect x="20" y="14" width="4" height="7" fill="#62e6ff"/><rect x="26" y="8" width="4" height="13" fill="#62e6ff"/><path d="M9 24v9M31 24v9" stroke="#1c1c22" stroke-width="2"/>',
+  pedestal: '<rect x="13" y="16" width="14" height="17" fill="#e9e6ef"/><rect x="12" y="15" width="16" height="2" fill="#62e6ff"/><path d="M20 3l6 4v6l-6 3-6-3V7z" fill="#7ee0a1"/>',
+  vitrine: '<rect x="10" y="20" width="20" height="13" fill="#f1eee8"/><rect x="10" y="5" width="20" height="15" fill="#cfeaff" opacity=".6" stroke="#c9a24a"/><path d="M20 9l4 2.5v4.5l-4 2-4-2v-4.5z" fill="#62e6ff"/><rect x="9" y="3" width="22" height="2" fill="#f1eee8"/>',
+  crate: '<rect x="7" y="10" width="26" height="22" fill="#9a6b3c"/><path d="M7 14h26M7 28h26" stroke="#6b4a2e" stroke-width="2"/><rect x="14" y="17" width="12" height="7" fill="#f3ecdc"/>',
+  fileCabinet: '<rect x="11" y="3" width="18" height="30" rx="1" fill="#7d8796"/><path d="M11 13h18M11 23h18" stroke="#5d6676"/><rect x="17" y="7" width="6" height="2" fill="#f3ecdc"/><rect x="18" y="10" width="4" height="1.2" fill="#c8c8d0"/><rect x="18" y="20" width="4" height="1.2" fill="#c8c8d0"/><rect x="18" y="30" width="4" height="1.2" fill="#c8c8d0"/>'
 });
 /* ============================================================
    AI artifacts · viewers: what opens when you click a carrier.
@@ -5080,14 +5374,17 @@ function createArtWin(g, e) {
    card; Bit can fill in the details; one click stores it and puts
    the right object in the room. Protocol: docs/PUBLISH.md
    ============================================================ */
-const PUB = { items: [], busy: false };
+const PUB = { items: [], busy: false, target: null, guideName: '' };
 const PUB_TOOL_URL = 'https://raw.githubusercontent.com/ciki-9876/gebi/main/tools/gebi-publish.mjs';
 const textBytes = s => new Blob([s]).size;
 
 /* ---------- intake ---------- */
+function itemCat(it) { return artCat(it.type, it.name, it.files ? it.files.some(f => /\.html?$/i.test(f.path)) : undefined); }
 function pubItem(o) {
   const t = ART_TYPES[o.type] ? o.type : 'file';
-  return Object.assign({ id: rid('p'), made: '', desc: '' }, o, { type: t, carrier: artCarrier(t, o.carrier), title: String(o.title || baseName(o.name) || ART_TYPES[t].label).slice(0, 30) });
+  const it = Object.assign({ id: rid('p'), made: '', desc: '' }, o, { type: t, title: String(o.title || baseName(o.name) || ART_TYPES[t].label).slice(0, 30) });
+  it.cat = itemCat(it); it.carrier = artCarrier(it.cat, o.carrier);
+  return it;
 }
 async function fileItems(f) {
   const name = f.name || 'file', low = name.toLowerCase();
@@ -5160,17 +5457,26 @@ async function linkManifest(code) {
 }
 
 /* ---------- the desk ---------- */
-function aiGuide() {
-  return `请帮我把作品发布到「隔壁」（一个把作品摆进 3D 房间的社区）。按下面的顺序选一种做法：
+// 发给用户 AI 的发布说明：用户只填第一行的作品名，其余不用看
+const GUIDE_BLANK = '【在这里填写作品名】';
+function aiGuide(name) {
+  const n = String(name || '').trim().slice(0, 30);
+  return `作品名：${n || GUIDE_BLANK}
+↑ 只需要填上面这一行。下面的内容不用改，整段发给你的 AI 就行。
+━━━━━━━━━━━━━━━━━━━━
 
+请把上面这件作品发布到「隔壁」（一个把作品摆进 3D 房间的社区）。作品就是你刚才为我做的东西，或者我接下来发给你的文件。
+作品名用第一行写的；如果第一行还是“${GUIDE_BLANK}”，就替我起一个 12 字以内的名字。
+
+按下面的顺序选一种做法：
 1. 如果你能调用 MCP 工具 gebi_publish_files 或 gebi_publish_content，直接调用，然后把返回的发布链接或 .gebi.zip 文件交给我。
 2. 如果你能运行命令：下载 ${PUB_TOOL_URL}
    运行 node gebi-publish.mjs <文件或文件夹> --title "作品名" --made-with "<你的名字>"
    把输出的发布链接或 .gebi.zip 文件交给我。
 3. 都不能的话：把作品整理成一个 .gebi.json 文件给我，内容是：
-   {"gebi":1,"title":"作品名（30 字内）","desc":"一句话介绍（80 字内）","type":"web|game|doc|image|video|audio|pdf|project|model|data|file","made_with":"<你的名字>","files":[{"path":"index.html","text":"文件内容"}]}
+   {"gebi":1,"title":"作品名","desc":"一句话介绍（80 字内）","type":"web|game|doc|image|video|audio|pdf|project|model|data|file","made_with":"<你的名字>","files":[{"path":"index.html","text":"文件内容"}]}
    - 文本文件写在 text 里；图片等二进制文件写成 {"path":"a.png","base64":"…","mime":"image/png"}。
-   - 有多个文件时会作为项目运行，入口是 index.html，可以用相对路径引用其他文件。
+   - 有多个文件时会作为项目，入口是 index.html，可以用相对路径引用其他文件。
    - 作品已经在网上的话，用 "url":"https://…" 代替 files。
 
 限制：单个文件不超过 20 MB；单个网页、文档、代码不超过 200 KB；项目里的代码和文本合计不超过 1 MB；不支持需要服务器的后端。
@@ -5179,6 +5485,7 @@ function aiGuide() {
 function mcpConfig() { return `{\n  "mcpServers": {\n    "gebi": { "command": "node", "args": ["<保存位置>/gebi-publish.mjs"] }\n  }\n}`; }
 async function openPublish(seed) {
   if (!seed && PUB.pending) { seed = PUB.pending; PUB.pending = null; }
+  if (seed && seed.target) { PUB.target = seed.target; seed = null; } else if (!seed) PUB.target = null;
   if (!(S.view === 'room' && S.room && S.room.mine)) { if (!(await pubGoHome())) { if (seed) PUB.pending = seed; return; } }
   if (CLOUD.ready && !canPost()) { toast('你现在只能参观：发布作品需要房主把你设为“参与者”', 4200); return; }
   if (S.win) minimizeWin(S.win, true);
@@ -5216,8 +5523,11 @@ function pubWarn(it) {
   if (it.size > ART_ASSET_MAX) return `文件有 ${mb(it.size)}，超过了 20 MB。压缩一下，或者放到网上后用网址发布。`;
   if ((it.type === 'model' || it.type === 'file') && it.blob && !assetType(it.name, it.mime) && it.size > DB_BLOB_MAX) return `这种文件只能存 2 MB 以内。放到网上后用网址发布。`;
   if (S.room.items.length + PUB.items.length > 80) return '房间里的物件快放满了（最多 80 件），先删掉一些。';
+  const tg = pubTarget();
+  if (tg && PUB.items[0] === it && !ART_CATS[it.cat].carriers.includes(tg.userData.def.type)) return `「${nameOf(tg)}」放不了${ART_CATS[it.cat].label}的作品。换一件物件，或者先把这件移除。`;
   return '';
 }
+function pubTarget() { const g = PUB.target ? findGroup(PUB.target) : null; return g && S.room && S.room.mine ? g : null; }
 function typeChoices(it) {
   if (it.url) return [it.type];
   if (it.files) return ['project'];
@@ -5226,19 +5536,21 @@ function typeChoices(it) {
 }
 function renderPublish(errs = []) {
   if (!S.panel || S.panel.kind !== 'publish') return;
-  const n = PUB.items.length;
+  const n = PUB.items.length, tg = pubTarget();
   const cards = PUB.items.map((it, i) => {
     const warn = pubWarn(it), types = typeChoices(it);
     return `<div class="pub-card" data-i="${i}">
       <div class="pub-head"><span class="tag">${esc(ART_TYPES[it.type].label)}</span><b>${esc(it.name || it.url || '')}</b><small class="mute">${it.size ? esc(mb(it.size)) : it.url ? '网址' : ''}</small><button type="button" class="icon-btn" data-x="rm" aria-label="移除">${ICON.del}</button></div>
       ${types.length > 1 ? `<div class="field"><label>类型</label><div class="seg" data-f="type">${types.map(t => `<button type="button" data-v="${t}" aria-pressed="${t === it.type}">${esc(ART_TYPES[t].label)}</button>`).join('')}</div></div>` : ''}
-      <div class="field"><label>放进</label><div class="seg" data-f="carrier">${ART_TYPES[it.type].carriers.map(c => `<button type="button" data-v="${c}" aria-pressed="${c === it.carrier}">${esc(carrierName(c))}</button>`).join('')}</div></div>
+      <p class="small u-mb3">展示类别 · <b>${esc(ART_CATS[it.cat].label)}</b> <span class="mute">${esc(ART_CATS[it.cat].note)}</span></p>
+      ${tg && i === 0 ? `<p class="small u-mb3">放进 · 房间里已有的「${esc(nameOf(tg))}」</p>` : `<div class="field"><label>放进</label><div class="seg" data-f="carrier">${ART_CATS[it.cat].carriers.map(c => `<button type="button" data-v="${c}" aria-pressed="${c === it.carrier}">${esc(carrierName(c))}</button>`).join('')}</div></div>`}
       <div class="field"><label for="pt${i}">作品名称</label><input class="input" id="pt${i}" data-f="title" maxlength="30" value="${esc(it.title)}"></div>
       <div class="field"><label for="pd${i}">一句话介绍</label><input class="input" id="pd${i}" data-f="desc" maxlength="80" value="${esc(it.desc)}" placeholder="可以留空，或者让 Bit 来写"></div>
       ${it.made ? `<p class="mute small">用 ${esc(it.made)} 做的</p>` : ''}${warn ? `<p class="err">${esc(warn)}</p>` : ''}<p class="pub-state mute small" data-s></p>
     </div>`;
   }).join('');
-  setPanel('发布台 · 任何 AI 做的东西', n ? `准备发布 ${n} 件` : '发布作品', `
+  setPanel('发布台 · 任何 AI 做的东西', n ? `准备发布 ${n} 件` : tg ? `发布到「${nameOf(tg)}」` : '发布作品', `
+    ${tg ? `<p class="small u-mb3">第一件作品会放进房间里的「${esc(nameOf(tg))}」，适合${esc(carrierCats(tg.userData.def.type).map(c => ART_CATS[c].label).join('、'))}的作品。其余的另外摆放。</p>` : ''}
     ${errs.map(e => `<p class="err u-mb3">${esc(e)}</p>`).join('')}
     ${cards}
     <div class="pub-drop" id="pubDrop" tabindex="0"><b>${n ? '再加一些' : '把 AI 做的东西拖到这里'}</b><span>网页、文档、图片、视频、音频、PDF、3D 模型、整个项目的 .zip，或者 AI 给你的 .gebi 发布包</span>
@@ -5247,7 +5559,8 @@ function renderPublish(errs = []) {
       <button type="button" class="btn sm u-mt2" id="pubPasteGo">识别粘贴的内容</button></div>
     <div class="divider"></div>
     <p class="section-t">让你的 AI 直接发布</p>
-    <p class="mute small u-mb3">把发布说明发给你用的 AI（ChatGPT、Claude、Gemini、Cursor……），它会把作品打包好，交给你一个链接或文件。</p>
+    <p class="mute small u-mb3">把发布说明发给你用的 AI（ChatGPT、Claude、Gemini、Cursor……），它会把作品打包好，交给你一个链接或文件。说明里只有第一行的作品名要填，可以在这里先填好。</p>
+    <div class="field"><label for="pubName">作品名</label><input class="input" id="pubName" maxlength="30" value="${esc(PUB.guideName)}" placeholder="可以留空，粘贴后在第一行填，或者让 AI 起名"></div>
     <div class="u-row"><button type="button" class="btn sm" id="pubCopyGuide">复制发布说明</button><button type="button" class="btn sm ghost" id="pubCopyMcp">复制 MCP 配置</button></div>
     <details class="pub-more"><summary>装上隔壁发布工具（MCP）</summary><p class="mute small">下载 <a href="${PUB_TOOL_URL}" target="_blank" rel="noopener noreferrer">gebi-publish.mjs</a>（需要 Node 18 以上），把下面的配置加进 Claude Desktop、Cursor、Codex 等工具的 MCP 设置，然后对 AI 说“把这个发布到隔壁”。</p><pre class="code">${esc(mcpConfig())}</pre></details>`,
     n ? `<button type="button" class="btn primary" id="pubGo"${PUB.busy ? ' disabled' : ''}>发布 ${n} 件到房间</button><button type="button" class="btn" id="pubBit"${PUB.busy ? ' disabled' : ''}>让 Bit 补全介绍</button>` : '');
@@ -5257,7 +5570,7 @@ function renderPublish(errs = []) {
       const b = ev.target.closest('button'); if (!b || PUB.busy) return;
       if (b.dataset.x === 'rm') { PUB.items.splice(+card.dataset.i, 1); renderPublish(); return; }
       const seg = b.closest('[data-f]'); if (!seg) return;
-      if (seg.dataset.f === 'type') { it.type = b.dataset.v; it.carrier = artCarrier(it.type, it.carrier); renderPublish(); }
+      if (seg.dataset.f === 'type') { it.type = b.dataset.v; it.cat = itemCat(it); it.carrier = artCarrier(it.cat, it.carrier); renderPublish(); }
       else { it.carrier = b.dataset.v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); }
     });
     card.querySelectorAll('input[data-f]').forEach(inp => inp.addEventListener('input', () => { it[inp.dataset.f] = inp.value; }));
@@ -5268,7 +5581,8 @@ function renderPublish(errs = []) {
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', ev => { ev.preventDefault(); ev.stopPropagation(); drop.classList.remove('over'); if (ev.dataTransfer.files.length) pubAdd({ files: ev.dataTransfer.files }); });
   $('#pubPasteGo').addEventListener('click', () => { const v = $('#pubPaste').value; if (v.trim()) pubAdd({ text: v }); });
-  $('#pubCopyGuide').addEventListener('click', () => copyText(aiGuide(), '发布说明已复制，发给你的 AI 吧'));
+  $('#pubName').addEventListener('input', ev => { PUB.guideName = ev.target.value; });
+  $('#pubCopyGuide').addEventListener('click', () => copyText(aiGuide(PUB.guideName), PUB.guideName.trim() ? '发布说明已复制，作品名已经填好，发给你的 AI 吧' : '发布说明已复制。粘贴后在第一行填上作品名，再发给你的 AI'));
   $('#pubCopyMcp').addEventListener('click', () => copyText(mcpConfig(), 'MCP 配置已复制'));
   const go = $('#pubGo'); if (go) go.addEventListener('click', pubCommit);
   const bit = $('#pubBit'); if (bit) bit.addEventListener('click', pubAutofill);
@@ -5290,11 +5604,11 @@ async function pubAutofill() {
     const prompt = `你是「隔壁」社区的发布助手。用户要把一件 AI 做的作品摆进自己的 3D 房间。根据下面的信息，用中文给出：
 - title：作品名，12 字以内，具体，不要“我的作品”这类空话
 - desc：一句话介绍，40 字以内，说清楚它是什么、能做什么
-- carrier：从 ${JSON.stringify(ART_TYPES[it.type].carriers)} 里选最合适的一个
+- carrier：从 ${JSON.stringify(ART_CATS[it.cat].carriers)} 里选最合适的一个（${ART_CATS[it.cat].carriers.map(c => c + ' 是' + carrierName(c)).join('，')}）
 只输出 JSON，例如 {"title":"…","desc":"…","carrier":"…"}。
 
 文件名：${it.name || it.url || ''}
-类型：${ART_TYPES[it.type].label}
+类型：${ART_TYPES[it.type].label}（${ART_CATS[it.cat].label}）
 现在的名称：${it.title}
 ${peek ? '内容节选：\n' + peek : ''}`;
     const opts = { modelTier: 'quick' };
@@ -5303,7 +5617,7 @@ ${peek ? '内容节选：\n' + peek : ''}`;
       const r = await S.sample(prompt, opts), j = JSON.parse((/\{[\s\S]*\}/.exec(r.text || '') || ['{}'])[0]);
       if (j.title) it.title = String(j.title).slice(0, 30);
       if (j.desc) it.desc = String(j.desc).slice(0, 80);
-      if (j.carrier) it.carrier = artCarrier(it.type, j.carrier);
+      if (j.carrier) it.carrier = artCarrier(it.cat, j.carrier);
     } catch (e) { if (e && e.code === 'not_granted') { toast('没有授权 Bit 使用 AI，先手动填写吧'); break; } if (e && e.code === 'rate_limited') { toast('Bit 有点忙，稍后再试'); break; } }
   }
   PUB.busy = false; renderPublish();
@@ -5315,6 +5629,7 @@ async function pubStore(it, i) {
   const e = { kind: d.kind, title: (it.title || '').trim() || d.label, desc: (it.desc || '').trim(), url: '' };
   const art = { t, name: String(it.name || '').slice(0, 80), mime: it.mime || '', bytes: it.size || 0 };
   if (it.made) art.made = it.made;
+  art.cat = it.cat;
   if (it.url) { if (d.store === 'work') { e.url = it.url; e.open = 'embed'; } else e.art = Object.assign(art, { url: it.url }); return e; }
   if (d.store === 'work') {
     cardState(i, '正在托管网页……'); await saveWork(path, e.title, it.text);
@@ -5348,7 +5663,9 @@ async function pubCommit() {
   for (let i = 0; i < PUB.items.length; i++) {
     const it = PUB.items[i];
     try {
-      const e = await pubStore(it, i), sp = freeSpot(S.room.items);
+      const e = await pubStore(it, i), tg = i === 0 ? pubTarget() : null;
+      if (tg) { tg.userData.def.entry = e; rebuildFor(tg); done.push(findGroup(PUB.target)); PUB.target = null; ok.add(it); cardState(i, '已放进物件'); continue; }
+      const sp = freeSpot(S.room.items);
       const def = { uid: it.carrier + Date.now().toString(36) + i, type: it.carrier, x: sp.x, z: sp.z, rot: 0, entry: e };
       clampDef(def); S.room.items.push(def); done.push(placeItem(def)); ok.add(it); cardState(i, '已摆进房间');
     } catch (err) { cardState(i, err && err.friendly ? err.message : '没发布成功，稍后再试'); console.warn('publish', err); }
@@ -5361,6 +5678,17 @@ async function pubCommit() {
   if (left) { renderPublish([`${left} 件没有发布成功，原因写在卡片里。`]); toast(`摆好了 ${done.length} 件`); return; }
   closePanel(true); toast(`摆好了 ${done.length} 件，点它们就能打开`, 3600);
   setTimeout(() => { const g = done[done.length - 1]; if (g) focusOn(g, { loose: true }); }, 200);
+}
+
+/* ---------- an empty object from the catalog ---------- */
+function openEmptyCarrier(g) {
+  const cats = carrierCats(g.userData.def.type).map(c => ART_CATS[c]), mine = !!(S.room && S.room.mine);
+  beginPanel('emptyCarrier', g);
+  setPanel(cats.map(c => c.label).join(' · ') || '物件', nameOf(g), mine
+    ? `<p>这件${esc(nameOf(g))}还空着。它适合${esc(cats.map(c => c.label + '（' + c.note + '）').join('、'))}。</p><p class="mute small">发布一件 AI 做的作品进来，访客点它就能打开。</p>`
+    : `<p>房主还没把作品放进这件${esc(nameOf(g))}。</p><p class="mute small">过些天再来看看，或者给房主留言催一催。</p>`,
+    mine ? '<button type="button" class="btn primary" id="ecPub">发布作品到这里</button>' : '');
+  const b = $('#ecPub'); if (b) b.addEventListener('click', () => openPublish({ target: g.userData.iid }));
 }
 
 /* ---------- ways in ---------- */

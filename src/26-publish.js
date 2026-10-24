@@ -4,14 +4,17 @@
    card; Bit can fill in the details; one click stores it and puts
    the right object in the room. Protocol: docs/PUBLISH.md
    ============================================================ */
-const PUB = { items: [], busy: false };
+const PUB = { items: [], busy: false, target: null, guideName: '' };
 const PUB_TOOL_URL = 'https://raw.githubusercontent.com/ciki-9876/gebi/main/tools/gebi-publish.mjs';
 const textBytes = s => new Blob([s]).size;
 
 /* ---------- intake ---------- */
+function itemCat(it) { return artCat(it.type, it.name, it.files ? it.files.some(f => /\.html?$/i.test(f.path)) : undefined); }
 function pubItem(o) {
   const t = ART_TYPES[o.type] ? o.type : 'file';
-  return Object.assign({ id: rid('p'), made: '', desc: '' }, o, { type: t, carrier: artCarrier(t, o.carrier), title: String(o.title || baseName(o.name) || ART_TYPES[t].label).slice(0, 30) });
+  const it = Object.assign({ id: rid('p'), made: '', desc: '' }, o, { type: t, title: String(o.title || baseName(o.name) || ART_TYPES[t].label).slice(0, 30) });
+  it.cat = itemCat(it); it.carrier = artCarrier(it.cat, o.carrier);
+  return it;
 }
 async function fileItems(f) {
   const name = f.name || 'file', low = name.toLowerCase();
@@ -84,17 +87,26 @@ async function linkManifest(code) {
 }
 
 /* ---------- the desk ---------- */
-function aiGuide() {
-  return `请帮我把作品发布到「隔壁」（一个把作品摆进 3D 房间的社区）。按下面的顺序选一种做法：
+// 发给用户 AI 的发布说明：用户只填第一行的作品名，其余不用看
+const GUIDE_BLANK = '【在这里填写作品名】';
+function aiGuide(name) {
+  const n = String(name || '').trim().slice(0, 30);
+  return `作品名：${n || GUIDE_BLANK}
+↑ 只需要填上面这一行。下面的内容不用改，整段发给你的 AI 就行。
+━━━━━━━━━━━━━━━━━━━━
 
+请把上面这件作品发布到「隔壁」（一个把作品摆进 3D 房间的社区）。作品就是你刚才为我做的东西，或者我接下来发给你的文件。
+作品名用第一行写的；如果第一行还是“${GUIDE_BLANK}”，就替我起一个 12 字以内的名字。
+
+按下面的顺序选一种做法：
 1. 如果你能调用 MCP 工具 gebi_publish_files 或 gebi_publish_content，直接调用，然后把返回的发布链接或 .gebi.zip 文件交给我。
 2. 如果你能运行命令：下载 ${PUB_TOOL_URL}
    运行 node gebi-publish.mjs <文件或文件夹> --title "作品名" --made-with "<你的名字>"
    把输出的发布链接或 .gebi.zip 文件交给我。
 3. 都不能的话：把作品整理成一个 .gebi.json 文件给我，内容是：
-   {"gebi":1,"title":"作品名（30 字内）","desc":"一句话介绍（80 字内）","type":"web|game|doc|image|video|audio|pdf|project|model|data|file","made_with":"<你的名字>","files":[{"path":"index.html","text":"文件内容"}]}
+   {"gebi":1,"title":"作品名","desc":"一句话介绍（80 字内）","type":"web|game|doc|image|video|audio|pdf|project|model|data|file","made_with":"<你的名字>","files":[{"path":"index.html","text":"文件内容"}]}
    - 文本文件写在 text 里；图片等二进制文件写成 {"path":"a.png","base64":"…","mime":"image/png"}。
-   - 有多个文件时会作为项目运行，入口是 index.html，可以用相对路径引用其他文件。
+   - 有多个文件时会作为项目，入口是 index.html，可以用相对路径引用其他文件。
    - 作品已经在网上的话，用 "url":"https://…" 代替 files。
 
 限制：单个文件不超过 20 MB；单个网页、文档、代码不超过 200 KB；项目里的代码和文本合计不超过 1 MB；不支持需要服务器的后端。
@@ -103,6 +115,7 @@ function aiGuide() {
 function mcpConfig() { return `{\n  "mcpServers": {\n    "gebi": { "command": "node", "args": ["<保存位置>/gebi-publish.mjs"] }\n  }\n}`; }
 async function openPublish(seed) {
   if (!seed && PUB.pending) { seed = PUB.pending; PUB.pending = null; }
+  if (seed && seed.target) { PUB.target = seed.target; seed = null; } else if (!seed) PUB.target = null;
   if (!(S.view === 'room' && S.room && S.room.mine)) { if (!(await pubGoHome())) { if (seed) PUB.pending = seed; return; } }
   if (CLOUD.ready && !canPost()) { toast('你现在只能参观：发布作品需要房主把你设为“参与者”', 4200); return; }
   if (S.win) minimizeWin(S.win, true);
@@ -140,8 +153,11 @@ function pubWarn(it) {
   if (it.size > ART_ASSET_MAX) return `文件有 ${mb(it.size)}，超过了 20 MB。压缩一下，或者放到网上后用网址发布。`;
   if ((it.type === 'model' || it.type === 'file') && it.blob && !assetType(it.name, it.mime) && it.size > DB_BLOB_MAX) return `这种文件只能存 2 MB 以内。放到网上后用网址发布。`;
   if (S.room.items.length + PUB.items.length > 80) return '房间里的物件快放满了（最多 80 件），先删掉一些。';
+  const tg = pubTarget();
+  if (tg && PUB.items[0] === it && !ART_CATS[it.cat].carriers.includes(tg.userData.def.type)) return `「${nameOf(tg)}」放不了${ART_CATS[it.cat].label}的作品。换一件物件，或者先把这件移除。`;
   return '';
 }
+function pubTarget() { const g = PUB.target ? findGroup(PUB.target) : null; return g && S.room && S.room.mine ? g : null; }
 function typeChoices(it) {
   if (it.url) return [it.type];
   if (it.files) return ['project'];
@@ -150,19 +166,21 @@ function typeChoices(it) {
 }
 function renderPublish(errs = []) {
   if (!S.panel || S.panel.kind !== 'publish') return;
-  const n = PUB.items.length;
+  const n = PUB.items.length, tg = pubTarget();
   const cards = PUB.items.map((it, i) => {
     const warn = pubWarn(it), types = typeChoices(it);
     return `<div class="pub-card" data-i="${i}">
       <div class="pub-head"><span class="tag">${esc(ART_TYPES[it.type].label)}</span><b>${esc(it.name || it.url || '')}</b><small class="mute">${it.size ? esc(mb(it.size)) : it.url ? '网址' : ''}</small><button type="button" class="icon-btn" data-x="rm" aria-label="移除">${ICON.del}</button></div>
       ${types.length > 1 ? `<div class="field"><label>类型</label><div class="seg" data-f="type">${types.map(t => `<button type="button" data-v="${t}" aria-pressed="${t === it.type}">${esc(ART_TYPES[t].label)}</button>`).join('')}</div></div>` : ''}
-      <div class="field"><label>放进</label><div class="seg" data-f="carrier">${ART_TYPES[it.type].carriers.map(c => `<button type="button" data-v="${c}" aria-pressed="${c === it.carrier}">${esc(carrierName(c))}</button>`).join('')}</div></div>
+      <p class="small u-mb3">展示类别 · <b>${esc(ART_CATS[it.cat].label)}</b> <span class="mute">${esc(ART_CATS[it.cat].note)}</span></p>
+      ${tg && i === 0 ? `<p class="small u-mb3">放进 · 房间里已有的「${esc(nameOf(tg))}」</p>` : `<div class="field"><label>放进</label><div class="seg" data-f="carrier">${ART_CATS[it.cat].carriers.map(c => `<button type="button" data-v="${c}" aria-pressed="${c === it.carrier}">${esc(carrierName(c))}</button>`).join('')}</div></div>`}
       <div class="field"><label for="pt${i}">作品名称</label><input class="input" id="pt${i}" data-f="title" maxlength="30" value="${esc(it.title)}"></div>
       <div class="field"><label for="pd${i}">一句话介绍</label><input class="input" id="pd${i}" data-f="desc" maxlength="80" value="${esc(it.desc)}" placeholder="可以留空，或者让 Bit 来写"></div>
       ${it.made ? `<p class="mute small">用 ${esc(it.made)} 做的</p>` : ''}${warn ? `<p class="err">${esc(warn)}</p>` : ''}<p class="pub-state mute small" data-s></p>
     </div>`;
   }).join('');
-  setPanel('发布台 · 任何 AI 做的东西', n ? `准备发布 ${n} 件` : '发布作品', `
+  setPanel('发布台 · 任何 AI 做的东西', n ? `准备发布 ${n} 件` : tg ? `发布到「${nameOf(tg)}」` : '发布作品', `
+    ${tg ? `<p class="small u-mb3">第一件作品会放进房间里的「${esc(nameOf(tg))}」，适合${esc(carrierCats(tg.userData.def.type).map(c => ART_CATS[c].label).join('、'))}的作品。其余的另外摆放。</p>` : ''}
     ${errs.map(e => `<p class="err u-mb3">${esc(e)}</p>`).join('')}
     ${cards}
     <div class="pub-drop" id="pubDrop" tabindex="0"><b>${n ? '再加一些' : '把 AI 做的东西拖到这里'}</b><span>网页、文档、图片、视频、音频、PDF、3D 模型、整个项目的 .zip，或者 AI 给你的 .gebi 发布包</span>
@@ -171,7 +189,8 @@ function renderPublish(errs = []) {
       <button type="button" class="btn sm u-mt2" id="pubPasteGo">识别粘贴的内容</button></div>
     <div class="divider"></div>
     <p class="section-t">让你的 AI 直接发布</p>
-    <p class="mute small u-mb3">把发布说明发给你用的 AI（ChatGPT、Claude、Gemini、Cursor……），它会把作品打包好，交给你一个链接或文件。</p>
+    <p class="mute small u-mb3">把发布说明发给你用的 AI（ChatGPT、Claude、Gemini、Cursor……），它会把作品打包好，交给你一个链接或文件。说明里只有第一行的作品名要填，可以在这里先填好。</p>
+    <div class="field"><label for="pubName">作品名</label><input class="input" id="pubName" maxlength="30" value="${esc(PUB.guideName)}" placeholder="可以留空，粘贴后在第一行填，或者让 AI 起名"></div>
     <div class="u-row"><button type="button" class="btn sm" id="pubCopyGuide">复制发布说明</button><button type="button" class="btn sm ghost" id="pubCopyMcp">复制 MCP 配置</button></div>
     <details class="pub-more"><summary>装上隔壁发布工具（MCP）</summary><p class="mute small">下载 <a href="${PUB_TOOL_URL}" target="_blank" rel="noopener noreferrer">gebi-publish.mjs</a>（需要 Node 18 以上），把下面的配置加进 Claude Desktop、Cursor、Codex 等工具的 MCP 设置，然后对 AI 说“把这个发布到隔壁”。</p><pre class="code">${esc(mcpConfig())}</pre></details>`,
     n ? `<button type="button" class="btn primary" id="pubGo"${PUB.busy ? ' disabled' : ''}>发布 ${n} 件到房间</button><button type="button" class="btn" id="pubBit"${PUB.busy ? ' disabled' : ''}>让 Bit 补全介绍</button>` : '');
@@ -181,7 +200,7 @@ function renderPublish(errs = []) {
       const b = ev.target.closest('button'); if (!b || PUB.busy) return;
       if (b.dataset.x === 'rm') { PUB.items.splice(+card.dataset.i, 1); renderPublish(); return; }
       const seg = b.closest('[data-f]'); if (!seg) return;
-      if (seg.dataset.f === 'type') { it.type = b.dataset.v; it.carrier = artCarrier(it.type, it.carrier); renderPublish(); }
+      if (seg.dataset.f === 'type') { it.type = b.dataset.v; it.cat = itemCat(it); it.carrier = artCarrier(it.cat, it.carrier); renderPublish(); }
       else { it.carrier = b.dataset.v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); }
     });
     card.querySelectorAll('input[data-f]').forEach(inp => inp.addEventListener('input', () => { it[inp.dataset.f] = inp.value; }));
@@ -192,7 +211,8 @@ function renderPublish(errs = []) {
   drop.addEventListener('dragleave', () => drop.classList.remove('over'));
   drop.addEventListener('drop', ev => { ev.preventDefault(); ev.stopPropagation(); drop.classList.remove('over'); if (ev.dataTransfer.files.length) pubAdd({ files: ev.dataTransfer.files }); });
   $('#pubPasteGo').addEventListener('click', () => { const v = $('#pubPaste').value; if (v.trim()) pubAdd({ text: v }); });
-  $('#pubCopyGuide').addEventListener('click', () => copyText(aiGuide(), '发布说明已复制，发给你的 AI 吧'));
+  $('#pubName').addEventListener('input', ev => { PUB.guideName = ev.target.value; });
+  $('#pubCopyGuide').addEventListener('click', () => copyText(aiGuide(PUB.guideName), PUB.guideName.trim() ? '发布说明已复制，作品名已经填好，发给你的 AI 吧' : '发布说明已复制。粘贴后在第一行填上作品名，再发给你的 AI'));
   $('#pubCopyMcp').addEventListener('click', () => copyText(mcpConfig(), 'MCP 配置已复制'));
   const go = $('#pubGo'); if (go) go.addEventListener('click', pubCommit);
   const bit = $('#pubBit'); if (bit) bit.addEventListener('click', pubAutofill);
@@ -214,11 +234,11 @@ async function pubAutofill() {
     const prompt = `你是「隔壁」社区的发布助手。用户要把一件 AI 做的作品摆进自己的 3D 房间。根据下面的信息，用中文给出：
 - title：作品名，12 字以内，具体，不要“我的作品”这类空话
 - desc：一句话介绍，40 字以内，说清楚它是什么、能做什么
-- carrier：从 ${JSON.stringify(ART_TYPES[it.type].carriers)} 里选最合适的一个
+- carrier：从 ${JSON.stringify(ART_CATS[it.cat].carriers)} 里选最合适的一个（${ART_CATS[it.cat].carriers.map(c => c + ' 是' + carrierName(c)).join('，')}）
 只输出 JSON，例如 {"title":"…","desc":"…","carrier":"…"}。
 
 文件名：${it.name || it.url || ''}
-类型：${ART_TYPES[it.type].label}
+类型：${ART_TYPES[it.type].label}（${ART_CATS[it.cat].label}）
 现在的名称：${it.title}
 ${peek ? '内容节选：\n' + peek : ''}`;
     const opts = { modelTier: 'quick' };
@@ -227,7 +247,7 @@ ${peek ? '内容节选：\n' + peek : ''}`;
       const r = await S.sample(prompt, opts), j = JSON.parse((/\{[\s\S]*\}/.exec(r.text || '') || ['{}'])[0]);
       if (j.title) it.title = String(j.title).slice(0, 30);
       if (j.desc) it.desc = String(j.desc).slice(0, 80);
-      if (j.carrier) it.carrier = artCarrier(it.type, j.carrier);
+      if (j.carrier) it.carrier = artCarrier(it.cat, j.carrier);
     } catch (e) { if (e && e.code === 'not_granted') { toast('没有授权 Bit 使用 AI，先手动填写吧'); break; } if (e && e.code === 'rate_limited') { toast('Bit 有点忙，稍后再试'); break; } }
   }
   PUB.busy = false; renderPublish();
@@ -239,6 +259,7 @@ async function pubStore(it, i) {
   const e = { kind: d.kind, title: (it.title || '').trim() || d.label, desc: (it.desc || '').trim(), url: '' };
   const art = { t, name: String(it.name || '').slice(0, 80), mime: it.mime || '', bytes: it.size || 0 };
   if (it.made) art.made = it.made;
+  art.cat = it.cat;
   if (it.url) { if (d.store === 'work') { e.url = it.url; e.open = 'embed'; } else e.art = Object.assign(art, { url: it.url }); return e; }
   if (d.store === 'work') {
     cardState(i, '正在托管网页……'); await saveWork(path, e.title, it.text);
@@ -272,7 +293,9 @@ async function pubCommit() {
   for (let i = 0; i < PUB.items.length; i++) {
     const it = PUB.items[i];
     try {
-      const e = await pubStore(it, i), sp = freeSpot(S.room.items);
+      const e = await pubStore(it, i), tg = i === 0 ? pubTarget() : null;
+      if (tg) { tg.userData.def.entry = e; rebuildFor(tg); done.push(findGroup(PUB.target)); PUB.target = null; ok.add(it); cardState(i, '已放进物件'); continue; }
+      const sp = freeSpot(S.room.items);
       const def = { uid: it.carrier + Date.now().toString(36) + i, type: it.carrier, x: sp.x, z: sp.z, rot: 0, entry: e };
       clampDef(def); S.room.items.push(def); done.push(placeItem(def)); ok.add(it); cardState(i, '已摆进房间');
     } catch (err) { cardState(i, err && err.friendly ? err.message : '没发布成功，稍后再试'); console.warn('publish', err); }
@@ -285,6 +308,17 @@ async function pubCommit() {
   if (left) { renderPublish([`${left} 件没有发布成功，原因写在卡片里。`]); toast(`摆好了 ${done.length} 件`); return; }
   closePanel(true); toast(`摆好了 ${done.length} 件，点它们就能打开`, 3600);
   setTimeout(() => { const g = done[done.length - 1]; if (g) focusOn(g, { loose: true }); }, 200);
+}
+
+/* ---------- an empty object from the catalog ---------- */
+function openEmptyCarrier(g) {
+  const cats = carrierCats(g.userData.def.type).map(c => ART_CATS[c]), mine = !!(S.room && S.room.mine);
+  beginPanel('emptyCarrier', g);
+  setPanel(cats.map(c => c.label).join(' · ') || '物件', nameOf(g), mine
+    ? `<p>这件${esc(nameOf(g))}还空着。它适合${esc(cats.map(c => c.label + '（' + c.note + '）').join('、'))}。</p><p class="mute small">发布一件 AI 做的作品进来，访客点它就能打开。</p>`
+    : `<p>房主还没把作品放进这件${esc(nameOf(g))}。</p><p class="mute small">过些天再来看看，或者给房主留言催一催。</p>`,
+    mine ? '<button type="button" class="btn primary" id="ecPub">发布作品到这里</button>' : '');
+  const b = $('#ecPub'); if (b) b.addEventListener('click', () => openPublish({ target: g.userData.iid }));
 }
 
 /* ---------- ways in ---------- */

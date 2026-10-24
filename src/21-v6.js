@@ -166,7 +166,7 @@ async function saveCard(r, card) {
 /* ---------- 装修：待上传清单 ---------- */
 function pendingWorks() {
   if (!S.room || !S.roomRoot) return [];
-  return S.room.items.filter(d => d.entry && BIND_KINDS.includes(d.entry.kind) && !validUrl(d.entry.url) && !d.entry.work && !d.entry.from).map(d => findGroup(d.uid)).filter(Boolean);
+  return S.room.items.filter(d => d.entry && !d.entry.from && ((BIND_KINDS.includes(d.entry.kind) && !validUrl(d.entry.url) && !d.entry.work) || (ART_KINDS.includes(d.entry.kind) && !d.entry.art))).map(d => findGroup(d.uid)).filter(Boolean);
 }
 function renderPendingRow() {
   const row = $('#pendingRow'); if (!row) return;
