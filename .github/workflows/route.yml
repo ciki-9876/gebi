@@ -1,8 +1,8 @@
 name: route
-# PR 打上 ready-for-review 且没有人接手时，自动指派评审者。规则见 AGENTS.md「自动接力」。
+# 给 PR 打评审档位（lane:*），并在 ready-for-review 且没有人接手时自动指派评审者。规则见 AGENTS.md。
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review, labeled]
+    types: [opened, reopened, ready_for_review, labeled, synchronize]
 concurrency:
   group: route-${{ github.event.pull_request.number }}
   cancel-in-progress: false

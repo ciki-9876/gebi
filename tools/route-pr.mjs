@@ -28,9 +28,27 @@ async function api(method, path, body) {
 const labels = (await api('GET', `/issues/${pr.number}/labels?per_page=100`)).map(l => l.name);
 const author = (pr.head.ref.match(/^([A-Za-z0-9-]+)\//) || [])[1];
 if (pr.draft || pr.state !== 'open') { console.log('草稿或已关闭，不指派'); process.exit(0); }
+if (!author || !agents.includes(author)) { console.log('分支作者不在登记表里，不指派'); process.exit(0); }
+
+/* ---------- 档位：light / standard / heavy（规则见 AGENTS.md「评审档位」） ---------- */
+const HEAVY = [/^\.github\//, /^tools\//, /^AGENTS\.md$/, /^CLAUDE\.md$/, /^docs\/agents\//, /^styles\/tokens\.css$/, /^design-system\//, /^src\/12-cloud\.js$/, /^docs\/PUBLISH\.md$/, /^docs\/ARCHITECTURE\.md$/, /^docs\/DESIGN\.md$/, /^docs\/decisions\//];
+const GENERATED = [/^app\.js$/, /^assets\/land\.txt$/, /^design-system\/project\/(tokens\.json|components\/bundle\.css)$/];
+const files = [];
+for (let page = 1; ; page++) { const b = await api('GET', `/pulls/${pr.number}/files?per_page=100&page=${page}`); files.push(...b); if (b.length < 100) break; }
+const real = files.filter(f => !GENERATED.some(r => r.test(f.filename)));
+const lines = real.reduce((s, f) => s + f.additions + f.deletions, 0);
+const lane = real.some(f => HEAVY.some(r => r.test(f.filename))) ? 'heavy'
+  : real.every(f => /\.md$/.test(f.filename) && !/^src\//.test(f.filename)) || (lines <= 50 && !real.some(f => /^src\//.test(f.filename))) ? 'light' : 'standard';
+const have = labels.filter(l => l.startsWith('lane:'));
+if (!(have.length === 1 && have[0] === `lane:${lane}`)) {
+  for (const l of have) await api('DELETE', `/issues/${pr.number}/labels/${encodeURIComponent(l)}`);
+  await api('POST', `/issues/${pr.number}/labels`, { labels: [`lane:${lane}`] });
+  console.log(`档位：${lane}（${real.length} 个文件，${lines} 行，不含生成文件）`);
+}
+const LANE_TEXT = { light: '轻档：评审者快速过一遍 diff，确认三项检查通过即可，不必独立复现。', standard: '标准档：按 AGENTS.md「评审」完整评审。', heavy: '重档：评审者必须独立复现，并在评审评论里写明复现了什么。' }[lane];
+
 if (!labels.includes('ready-for-review')) { console.log('没有 ready-for-review，不指派'); process.exit(0); }
 if (labels.some(l => l.startsWith('handoff:'))) { console.log('已经有人接手：' + labels.filter(l => l.startsWith('handoff:')).join(',')); process.exit(0); }
-if (!author || !agents.includes(author)) { console.log('分支作者不在登记表里，不指派'); process.exit(0); }
 
 const candidates = agents.filter(a => a !== author);
 if (!candidates.length) {
@@ -47,5 +65,5 @@ for (const p of open) for (const l of p.labels) { const m = /^handoff:(.+)$/.exe
 const pick = candidates.sort((a, b) => load[a] - load[b] || a.localeCompare(b))[0];
 
 await api('POST', `/issues/${pr.number}/labels`, { labels: [`handoff:${pick}`] });
-await api('POST', `/issues/${pr.number}/comments`, { body: `— 路由机器人\n\n作者是 ${author}，已自动指派 **${pick}** 评审（打上 \`handoff:${pick}\`）。${pick} 下次查看待办（\`node tools/board.mjs ${pick}\`）时会看到。评审流程见 AGENTS.md。` });
+await api('POST', `/issues/${pr.number}/comments`, { body: `— 路由机器人\n\n作者是 ${author}，已自动指派 **${pick}** 评审（打上 \`handoff:${pick}\`）。${pick} 下次查看待办（\`node tools/board.mjs ${pick}\`）时会看到。评审流程见 AGENTS.md。\n\n**档位 \`lane:${lane}\`**：${LANE_TEXT}` });
 console.log(`已指派 ${pick}（待办：${JSON.stringify(load)}）`);
