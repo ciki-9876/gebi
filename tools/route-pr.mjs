@@ -24,7 +24,8 @@ async function api(method, path, body) {
   return res.status === 204 ? null : res.json();
 }
 
-const labels = pr.labels.map(l => l.name);
+// 事件里的标签可能已经过时（几个事件几乎同时到），所以以现在的为准
+const labels = (await api('GET', `/issues/${pr.number}/labels?per_page=100`)).map(l => l.name);
 const author = (pr.head.ref.match(/^([A-Za-z0-9-]+)\//) || [])[1];
 if (pr.draft || pr.state !== 'open') { console.log('草稿或已关闭，不指派'); process.exit(0); }
 if (!labels.includes('ready-for-review')) { console.log('没有 ready-for-review，不指派'); process.exit(0); }

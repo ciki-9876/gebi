@@ -3,6 +3,9 @@ name: route
 on:
   pull_request:
     types: [opened, reopened, ready_for_review, labeled]
+concurrency:
+  group: route-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
 permissions:
   contents: read
   issues: write
