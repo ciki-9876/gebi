@@ -44,9 +44,9 @@
 | `19-chrome.js` | 模式切换、导航、页面外框 |
 | `20-p1.js` | 收藏与改编、主题周（`TH`）、物件流（`OF`）、试玩（`QP`）、Bit 转达 |
 | `21-v6.js` | 口袋（`POCKET`）、房间名片、待上传清单、打开结果统计、冷启动、SDK 说明 |
-| `22-art-types.js` | AI 产物的类型表 `ART_TYPES`：每种类型的默认物件、存储方式；识别文件类型；清洗 `entry.art` |
+| `22-art-types.js` | AI 产物的类型表 `ART_TYPES`（怎么存、怎么打开）和展示类别 `ART_CATS`（能放进哪些物件）；识别文件类型；清洗 `entry.art` |
 | `23-art-store.js` | AI 产物的存储：assets、数据库、离线时的 IndexedDB；在浏览器里解压 zip；项目的拆分保存与读取 |
-| `24-art-carriers.js` | 8 种载体物件：画架、电视、阅读台、唱片机、工作台、展台、显示器、储物箱 |
+| `24-art-carriers.js` | 各展示类别的载体物件（19 件，加上已有的展示屏、街机、白板、机柜）和它们在物件库里的图标；把图片、视频帧、模型、图表放到物件上的工具函数 |
 | `25-art-viewers.js` | 打开 AI 产物的窗口：图片、播放器、PDF、沙箱里的文档与代码、项目的文件树与运行 |
 | `26-publish.js` | 发布台：拖放、粘贴、发布链接、发布包都在这里汇合，Bit 补全介绍，存好后摆进房间 |
 | `27-input.js` | 键盘、鼠标、触屏输入 |
@@ -90,7 +90,7 @@ function openSomething(r) {
 
 ### AI 产物 `entry.art`
 
-发布的 AI 产物挂在物件的 `entry` 上，`entry.kind` 是类型（`doc` `image` `video` `audio` `pdf` `project` `model` `data` `file`；网页和小游戏仍是 `web` `game2`，沿用 `work` 字段）。`entry.art` 的字段：`t` 类型、`name` 文件名、`mime`、`bytes`、`made` 用什么 AI 做的，以及下面三者之一：`asset`（assets 的 id，显示地址是 `/_blob/<id>`）、`url`（外部网址）、`work`（数据库路径：文本文档 `{text}`、项目清单 `{kind:"project", files, chunks}`、二进制 `{kind:"blob", chunks}`）。清洗函数是 `cleanArt()`，协议见 `docs/PUBLISH.md`。
+发布的 AI 产物挂在物件的 `entry` 上，`entry.kind` 是类型（`doc` `image` `video` `audio` `pdf` `project` `model` `data` `file`；网页和小游戏仍是 `web` `game2`，沿用 `work` 字段）。`entry.art` 的字段：`t` 类型、`cat` 展示类别（旧数据没有时按类型推算）、`name` 文件名、`mime`、`bytes`、`made` 用什么 AI 做的，以及下面三者之一：`asset`（assets 的 id，显示地址是 `/_blob/<id>`）、`url`（外部网址）、`work`（数据库路径：文本文档 `{text}`、项目清单 `{kind:"project", files, chunks}`、二进制 `{kind:"blob", chunks}`）。清洗函数是 `cleanArt()`，协议见 `docs/PUBLISH.md`。
 
 ### 约定
 

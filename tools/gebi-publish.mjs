@@ -18,27 +18,27 @@ import { homedir } from 'node:os';
 import { deflateRawSync } from 'node:zlib';
 import { createInterface } from 'node:readline';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const BASE = process.env.GEBI_URL || 'https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP';
 const LINK_MAX = 48 * 1024, FILE_MAX = 20 * 1024 * 1024, MAX_FILES = 400;
 const TYPES = ['web', 'game', 'doc', 'image', 'video', 'audio', 'pdf', 'project', 'model', 'data', 'file'];
-const CARRIERS = ['kiosk', 'arcade', 'easel', 'tv', 'reader', 'phono', 'workbench', 'pedestal', 'monitor', 'crate', 'serverRack'];
+const CARRIERS = ['browser', 'kiosk', 'whiteboard', 'arcade', 'handheld', 'easel', 'photoFrame', 'drawingBoard', 'tv', 'projector', 'phono', 'speaker', 'reader', 'magazineRack', 'noticeBoard', 'monitor', 'workbench', 'serverRack', 'dashboard', 'pedestal', 'vitrine', 'crate', 'fileCabinet'];
 const TEXT = new Set('html htm md markdown txt json csv tsv js mjs cjs ts tsx jsx css scss py rb go rs java c cpp h hpp cs swift kt sql yaml yml toml xml sh lua php vue svelte ini svg'.split(' '));
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', pdf: 'application/pdf', glb: 'model/gltf-binary', gltf: 'model/gltf+json', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', ico: 'image/x-icon' };
 const JUNK = /(^|\/)(__MACOSX|\.git|node_modules|\.DS_Store|Thumbs\.db|\.idea|\.vscode|\.env[^/]*)(\/|$)/;
 const ext = p => extname(p).slice(1).toLowerCase();
-const FORMATS = `隔壁支持的作品类型（type → 默认物件）：
-- web 单个网页 .html → kiosk 展示屏（≤ 200 KB，沙箱里运行）
-- game 网页小游戏 → arcade 街机（≤ 200 KB）
-- doc 文档 .md .txt → reader 阅读台
-- image 图片 .png .jpg .gif .webp .svg → easel 画架（≤ 20 MB）
-- video 视频 .mp4 .webm .mov → tv 电视（≤ 20 MB）
-- audio 音频 .mp3 .m4a .wav .ogg → phono 唱片机（≤ 20 MB，m4a 兼容性最好）
-- pdf → reader 阅读台（≤ 20 MB）
-- project 多个文件或 .zip → workbench 工作台（代码文本合计 ≤ 1 MB；有 index.html 时可以直接运行，不支持服务器后端）
-- model 3D 模型 .glb → pedestal 展台（≤ 2 MB）
-- data 代码和数据 .json .csv .js .py 等 → monitor 显示器（≤ 200 KB）
-- file 其他文件 → crate 储物箱
+const FORMATS = `隔壁先把作品归到「展示类别」，类别决定能放进哪些物件（carrier，第一个是默认）：
+- 网页类（单个 .html，或带 index.html、能在浏览器里跑的项目）→ browser 浏览器窗口、kiosk 展示屏、whiteboard 白板
+- 游戏类（网页小游戏，type 写 game）→ arcade 街机、handheld 掌机、kiosk 展示屏
+- 图片类（.png .jpg .gif .webp .svg）→ easel 画架、photoFrame 相框、drawingBoard 画板
+- 影像类（.mp4 .webm .mov）→ tv 电视、projector 投影幕
+- 声音类（.mp3 .m4a .wav .ogg）→ phono 唱片机、speaker 音箱
+- 阅读类（.md .txt .pdf）→ reader 阅读台、magazineRack 杂志架、noticeBoard 告示板
+- 代码类（源码，或没有网页入口的项目）→ monitor 显示器、workbench 工作台、serverRack 机柜
+- 数据类（.csv .tsv .json，会画成图表）→ dashboard 数据看板、monitor 显示器
+- 立体类（3D 模型 .glb）→ pedestal 展台、vitrine 玻璃展柜
+- 文件类（其他文件）→ crate 储物箱、fileCabinet 档案柜
+大小限制：单个网页、文档、代码 ≤ 200 KB；图片、视频、音频、PDF ≤ 20 MB；3D 模型和其他文件 ≤ 2 MB；项目里的代码文本合计 ≤ 1 MB，不支持服务器后端。
 发布方式：内容小时生成发布链接，用户点开后在隔壁里点“发布”；内容大时生成 .gebi.zip 发布包，用户拖进隔壁的发布台。`;
 
 /* ---------- collecting files ---------- */
@@ -115,7 +115,7 @@ const common = {
   title: { type: 'string', description: '作品名，30 字以内' },
   desc: { type: 'string', description: '一句话介绍，80 字以内' },
   type: { type: 'string', enum: TYPES, description: '作品类型，省略时由隔壁判断' },
-  carrier: { type: 'string', enum: CARRIERS, description: '想用的物件，省略时用类型的默认物件' },
+  carrier: { type: 'string', enum: CARRIERS, description: '想用的物件，必须属于作品的展示类别（见 gebi_formats），省略时用类别的默认物件' },
   made_with: { type: 'string', description: '用什么 AI 工具做的，例如 Claude、ChatGPT、Midjourney' },
   out_dir: { type: 'string', description: '内容太大时发布包保存到哪里，默认是下载文件夹' }
 };

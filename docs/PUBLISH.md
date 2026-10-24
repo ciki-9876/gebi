@@ -51,23 +51,45 @@
 
 `url` 和 `files` 二选一。两个都没有时，清单无效。
 
-## 类型与物件
+## 类型、展示类别与物件
 
-| `type` | 识别依据 | 默认物件 `carrier` | 打开后 | 存在哪里 |
-| --- | --- | --- | --- | --- |
-| `web` | 单个 `.html`，或粘贴的 HTML | `kiosk` 展示屏 | 沙箱窗口里运行 | 数据库，≤ 200 KB |
-| `game` | 同上，内容像游戏（canvas、键盘控制） | `arcade` 街机 | 沙箱窗口里运行（横版） | 数据库，≤ 200 KB |
-| `doc` | `.md` `.markdown` `.txt`，或粘贴的文章 | `reader` 阅读台 | 排版好的阅读视图 | 数据库，≤ 200 KB；更大的放 assets |
-| `image` | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` `.avif` | `easel` 画架，画布上就是这张图 | 大图查看 | assets，≤ 20 MiB |
-| `video` | `.mp4` `.webm` `.mov` | `tv` 电视 | 播放器 | assets，≤ 20 MiB |
-| `audio` | `.mp3` `.wav` `.ogg` `.m4a` `.flac` | `phono` 唱片机 | 播放器 | assets，≤ 20 MiB（见下方说明） |
-| `pdf` | `.pdf` | `reader` 阅读台 | 浏览器的 PDF 阅读器 | assets，≤ 20 MiB |
-| `project` | `.zip`，或清单里有多个文件 | `workbench` 工作台 | 文件树、README；有 `index.html` 时可以直接运行 | 文本文件在数据库，图片等在 assets |
-| `model` | `.glb` `.gltf` | `pedestal` 展台，模型就摆在展台上 | 展台上的实物 + 详情 | 数据库，≤ 2 MB |
-| `data` | `.json` `.csv` `.js` `.py` `.ts` 等代码和数据 | `monitor` 显示器 | 代码高亮 / 表格视图 | 数据库，≤ 200 KB |
-| `file` | 其他所有文件 | `crate` 储物箱 | 说明 + 下载 | assets 收的类型放 assets，其余放数据库，≤ 2 MB |
+作品分两层描述：
 
-一个 `type` 可以换用别的物件，比如图片也可以放在展示屏上。可用的组合以页面里的 `ART_TYPES` 为准。
+- **类型 `type`** 决定作品怎么存、怎么打开（下表）。
+- **展示类别**决定作品能放进哪些物件。每个类型先归到一个展示类别，类别里的物件都“说得通”：图片挂在相框里，视频放在电视上，数据画在看板上。
+
+| `type` | 识别依据 | 打开后 | 存在哪里 |
+| --- | --- | --- | --- |
+| `web` | 单个 `.html`，或粘贴的 HTML | 沙箱窗口里运行 | 数据库，≤ 200 KB |
+| `game` | 同上，内容像游戏（canvas、键盘控制） | 沙箱窗口里运行（横版） | 数据库，≤ 200 KB |
+| `doc` | `.md` `.markdown` `.txt`，或粘贴的文章 | 排版好的阅读视图 | 数据库，≤ 200 KB；更大的放 assets |
+| `image` | `.png` `.jpg` `.jpeg` `.gif` `.webp` `.svg` `.avif` | 大图查看 | assets，≤ 20 MiB |
+| `video` | `.mp4` `.webm` `.mov` | 播放器 | assets，≤ 20 MiB |
+| `audio` | `.mp3` `.wav` `.ogg` `.m4a` `.flac` | 播放器 | assets，≤ 20 MiB（见下方说明） |
+| `pdf` | `.pdf` | 浏览器的 PDF 阅读器 | assets，≤ 20 MiB |
+| `project` | `.zip`，或清单里有多个文件 | 文件树、README；有 `index.html` 时可以直接运行 | 文本文件在数据库，图片等在 assets |
+| `model` | `.glb` `.gltf` | 物件上的实物 + 详情 | 数据库，≤ 2 MB |
+| `data` | `.json` `.csv` `.js` `.py` `.ts` 等代码和数据 | 代码视图 / 表格视图 | 数据库，≤ 200 KB |
+| `file` | 其他所有文件 | 说明 + 下载 | assets 收的类型放 assets，其余放数据库，≤ 2 MB |
+
+### 展示类别
+
+| 展示类别 | 包括 | 物件 `carrier`（第一个是默认） |
+| --- | --- | --- |
+| 网页类 `web` | `web`；带网页入口、能在浏览器里跑的 `project` | `browser` 浏览器窗口、`kiosk` 展示屏、`whiteboard` 白板 |
+| 游戏类 `game` | `game` | `arcade` 街机、`handheld` 掌机、`kiosk` 展示屏 |
+| 图片类 `image` | `image` | `easel` 画架、`photoFrame` 相框、`drawingBoard` 画板 |
+| 影像类 `video` | `video` | `tv` 电视、`projector` 投影幕 |
+| 声音类 `audio` | `audio` | `phono` 唱片机、`speaker` 音箱 |
+| 阅读类 `read` | `doc`、`pdf` | `reader` 阅读台、`magazineRack` 杂志架、`noticeBoard` 告示板 |
+| 代码类 `code` | 代码文件；没有网页入口的 `project` | `monitor` 显示器、`workbench` 工作台、`serverRack` 机柜 |
+| 数据类 `data` | `.csv` `.tsv` `.json` | `dashboard` 数据看板、`monitor` 显示器 |
+| 立体类 `solid` | `model` | `pedestal` 展台、`vitrine` 玻璃展柜 |
+| 文件类 `file` | `file` | `crate` 储物箱、`fileCabinet` 档案柜 |
+
+- 作品本身会出现在物件上：图片在画架、相框、画板上；视频的一帧在电视、投影幕上；3D 模型摆在展台、展柜里；数据在看板上画成柱状图。其余物件显示由作品名生成的封面。
+- 清单里的 `carrier` 必须属于作品的展示类别，否则用类别的默认物件。类别和物件以页面里的 `ART_CATS` 为准。
+- 每个物件都在装修模式的物件库里，按类别分页。可以先放一件空物件，再选中它，点“发布 AI 作品到这件物件”把作品放进去。
 
 ### 项目怎么运行
 
@@ -140,7 +162,9 @@ node gebi-publish.mjs ./my-site --title "我的作品"
 
 ## 写给 AI 的发布说明
 
-隔壁页面的发布台里有一段“复制给你的 AI”的文字，内容是这份协议的精简版：有发布工具就调用工具；没有工具就把作品整理成 `.gebi.json` 或 `.gebi.zip`，让用户拖进隔壁。
+隔壁页面的发布台里有一段“复制给你的 AI”的发布说明，内容是这份协议的精简版：有发布工具就调用工具；没有工具就把作品整理成 `.gebi.json` 或 `.gebi.zip`，让用户拖进隔壁。
+
+说明的**第一行是“作品名：”**，用户只需要填这一行，其余文字不用看也不用改。发布台里也有一个“作品名”输入框，填好后复制，第一行就已经填上了。没填的话，说明会请 AI 自己起一个名字。
 
 ## 以后的 HTTP 接口（规划，未实现）
 

@@ -1,6 +1,7 @@
 /* ============================================================
-   AI artifacts · types: what each kind of AI output is, which
-   object carries it, where it is stored. Protocol: docs/PUBLISH.md
+   AI artifacts · types and display categories. A type says how a
+   work is stored and opened; its display category says which
+   objects can show it. Protocol: docs/PUBLISH.md
    ============================================================ */
 const ART_DB_MAX = 200 * 1024;
 const ART_ASSET_MAX = 20 * 1024 * 1024;
@@ -9,18 +10,44 @@ const ART_LINK_MAX = 48 * 1024;
 const TEXT_EXTS = ['html', 'htm', 'md', 'markdown', 'txt', 'json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini', 'env', 'gitignore', 'svg'];
 // store: work = 单文件网页（沿用托管作品）· text = 文本进数据库 · asset = 二进制进 assets · project = 拆成多份
 const ART_TYPES = {
-  web: { label: '网页', kind: 'web', carriers: ['kiosk', 'arcade', 'monitor'], store: 'work', exts: ['html', 'htm'] },
-  game: { label: '小游戏', kind: 'game2', carriers: ['arcade', 'kiosk'], store: 'work', exts: [] },
-  doc: { label: '文档', kind: 'doc', carriers: ['reader', 'monitor', 'crate'], store: 'text', exts: ['md', 'markdown', 'txt'] },
-  image: { label: '图片', kind: 'image', carriers: ['easel', 'kiosk', 'crate'], store: 'asset', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] },
-  video: { label: '视频', kind: 'video', carriers: ['tv', 'kiosk', 'crate'], store: 'asset', exts: ['mp4', 'webm', 'mov', 'm4v'] },
-  audio: { label: '音频', kind: 'audio', carriers: ['phono', 'crate'], store: 'asset', exts: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac'] },
-  pdf: { label: 'PDF', kind: 'pdf', carriers: ['reader', 'crate'], store: 'asset', exts: ['pdf'] },
-  project: { label: '项目', kind: 'project', carriers: ['workbench', 'serverRack', 'crate'], store: 'project', exts: ['zip'] },
-  model: { label: '3D 模型', kind: 'model', carriers: ['pedestal', 'crate'], store: 'asset', exts: ['glb', 'gltf'] },
-  data: { label: '代码与数据', kind: 'data', carriers: ['monitor', 'reader', 'crate'], store: 'text', exts: ['json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini'] },
-  file: { label: '文件', kind: 'file', carriers: ['crate'], store: 'asset', exts: [] }
+  web: { label: '网页', kind: 'web', store: 'work', exts: ['html', 'htm'] },
+  game: { label: '小游戏', kind: 'game2', store: 'work', exts: [] },
+  doc: { label: '文档', kind: 'doc', store: 'text', exts: ['md', 'markdown', 'txt'] },
+  image: { label: '图片', kind: 'image', store: 'asset', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] },
+  video: { label: '视频', kind: 'video', store: 'asset', exts: ['mp4', 'webm', 'mov', 'm4v'] },
+  audio: { label: '音频', kind: 'audio', store: 'asset', exts: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac'] },
+  pdf: { label: 'PDF', kind: 'pdf', store: 'asset', exts: ['pdf'] },
+  project: { label: '项目', kind: 'project', store: 'project', exts: ['zip'] },
+  model: { label: '3D 模型', kind: 'model', store: 'asset', exts: ['glb', 'gltf'] },
+  data: { label: '代码与数据', kind: 'data', store: 'text', exts: ['json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini'] },
+  file: { label: '文件', kind: 'file', store: 'asset', exts: [] }
 };
+// 展示类别：作品先归到类别，类别决定能放进哪些物件；第一个是默认物件
+const ART_CATS = {
+  web: { label: '网页类', note: '在浏览器里运行的作品', carriers: ['browser', 'kiosk', 'whiteboard'] },
+  game: { label: '游戏类', note: '能玩的网页小游戏', carriers: ['arcade', 'handheld', 'kiosk'] },
+  image: { label: '图片类', note: '插画、照片、海报、设计稿', carriers: ['easel', 'photoFrame', 'drawingBoard'] },
+  video: { label: '影像类', note: '视频、动画、录屏', carriers: ['tv', 'projector'] },
+  audio: { label: '声音类', note: '音乐、播客、音效', carriers: ['phono', 'speaker'] },
+  read: { label: '阅读类', note: '文章、笔记、文档、PDF', carriers: ['reader', 'magazineRack', 'noticeBoard'] },
+  code: { label: '代码类', note: '源码、脚本、跑不起来的项目', carriers: ['monitor', 'workbench', 'serverRack'] },
+  data: { label: '数据类', note: '表格、JSON 数据', carriers: ['dashboard', 'monitor'] },
+  solid: { label: '立体类', note: '3D 模型', carriers: ['pedestal', 'vitrine'] },
+  file: { label: '文件类', note: '其他文件', carriers: ['crate', 'fileCabinet'] }
+};
+const TYPE_CAT = { web: 'web', game: 'game', image: 'image', video: 'video', audio: 'audio', doc: 'read', pdf: 'read', model: 'solid', file: 'file' };
+// project 能在浏览器里跑（有 html）算网页类，否则算代码类；data 里的表格和 JSON 算数据类，其余算代码类
+function artCat(type, name, runnable) {
+  if (type === 'project') return runnable === false ? 'code' : 'web';
+  if (type === 'data') return /^(csv|tsv|json)$/.test(extOf(name)) ? 'data' : 'code';
+  return TYPE_CAT[type] || 'file';
+}
+function entryCat(e) {
+  if (!e) return null;
+  if (e.art) return ART_CATS[e.art.cat] ? e.art.cat : artCat(e.art.t, e.art.name);
+  return /game/.test(e.kind) ? 'game' : 'web';
+}
+function carrierCats(type) { return Object.keys(ART_CATS).filter(c => ART_CATS[c].carriers.includes(type)); }
 const ART_KINDS = Object.values(ART_TYPES).map(t => t.kind).filter(k => !['web', 'game2'].includes(k));
 const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', pdf: 'application/pdf', glb: 'model/gltf-binary', gltf: 'model/gltf+json', json: 'application/json', csv: 'text/csv', tsv: 'text/tab-separated-values', md: 'text/markdown', markdown: 'text/markdown', txt: 'text/plain', html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', ico: 'image/x-icon' };
 Object.assign(KIND_LABEL, { doc: '文档', image: '图片', video: '视频', audio: '音频', pdf: 'PDF', project: '项目', model: '3D 模型', data: '代码与数据', file: '文件' });
@@ -52,13 +79,19 @@ function sniffText(text) {
   const code = lines.filter(l => /^(import |export |from |def |class |function |const |let |var |package |#include|SELECT |CREATE )|[;{}]\s*$/.test(l)).length;
   return code > md * 2 && code > lines.length * .25 ? 'data' : 'doc';
 }
+function isJsonText(text) { const t = String(text || '').trim(); if (!/^[[{]/.test(t)) return false; try { JSON.parse(t); return true; } catch (e) { return false; } }
+// 至少两行、每行逗号数相同、第二行有数字：当作 CSV 表格
+function isCsvText(text) {
+  const L = String(text || '').trim().split(/\r?\n/).filter(Boolean); if (L.length < 2 || /[<{}]/.test(L[0])) return false;
+  const n = L[0].split(',').length; return n > 1 && L.every(l => l.split(',').length === n) && L[1].split(',').some(v => v.trim() !== '' && !isNaN(+v));
+}
 function titleFromText(text, type) {
   const t = String(text || '');
   if (type === 'web' || type === 'game') { const m = /<title>([^<]{1,60})<\/title>/i.exec(t) || /<h1[^>]*>([^<]{1,60})<\/h1>/i.exec(t); if (m) return m[1].trim(); }
   const h = /^#{1,2} +(.{1,60})$/m.exec(t); if (h) return h[1].trim();
   const first = t.split('\n').map(s => s.trim()).find(Boolean); return first ? first.replace(/^[#>*\-\s]+/, '').slice(0, 30) : '';
 }
-function artCarrier(type, want) { const d = ART_TYPES[type] || ART_TYPES.file; return d.carriers.includes(want) ? want : d.carriers[0]; }
+function artCarrier(cat, want) { const c = ART_CATS[cat] || ART_CATS.file; return c.carriers.includes(want) ? want : c.carriers[0]; }
 function carrierName(type) { return (ITEMS[type] && ITEMS[type].name) || type; }
 
 /* ---------- cleaning entry.art from other people's rooms ---------- */
@@ -71,6 +104,7 @@ function cleanArt(a, prefix, collected) {
   if (typeof a.work === 'string' && WORK_RE.test(a.work) && (!prefix || a.work.startsWith(prefix) || collected)) o.work = a.work;
   else if (!CLOUD.ready && typeof a.work === 'string' && /^local:[A-Za-z0-9_-]{1,60}$/.test(a.work)) o.work = a.work;
   if (a.made) o.made = String(a.made).slice(0, 30);
+  if (ART_CATS[a.cat]) o.cat = a.cat;
   if (a.w > 0 && a.h > 0) { o.w = Math.round(+a.w); o.h = Math.round(+a.h); }
   return o.asset || o.url || o.work ? o : null;
 }
