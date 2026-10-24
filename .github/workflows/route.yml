@@ -1,0 +1,20 @@
+name: route
+# PR 打上 ready-for-review 且没有人接手时，自动指派评审者。规则见 AGENTS.md「自动接力」。
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, labeled]
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tools/route-pr.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

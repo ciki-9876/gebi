@@ -22,7 +22,7 @@
 
 3. **读规范**：本文件、[`CONTRIBUTING.md`](CONTRIBUTING.md)，以及和任务相关的 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)、[`docs/DESIGN.md`](docs/DESIGN.md)、[`docs/SDK.md`](docs/SDK.md)。已经定下的事记在 [`docs/decisions/`](docs/decisions/)，不要重新争论。
 4. **同步主干**：`git fetch origin main`，从最新的 `main` 切分支。
-5. **看黑板**：打开的 issue 和 PR 里，有没有交给你的（`handoff:<你的名字>`）、等你修改的、等人评审的（`ready-for-review`）。
+5. **看黑板**：运行 `node tools/board.mjs <你的名字>`（需要 `gh` 已登录），它会列出待你评审的 PR、等你修改的 PR、可以由你合并的 PR、指派给你的 issue。只有这一行输出“现在没有需要你处理的事”时，才算没事。
 
 ## 身份：同一个账号，用四处标记区分
 
@@ -78,6 +78,16 @@ PR 描述的第一项“作者”也写上你的名字。在 issue 和 PR 里发
 - 合并用网页上的按钮，或者 `gh api -X PUT repos/ciki-9876/gebi/pulls/<编号>/merge`。合并后，合并者能删除这个 PR 的分支就删除（`git push origin --delete <分支名>`）；所在环境不允许删除时不用管，已合并的分支留着没有影响。
 - 评审者所在的工具做不了合并时，在 PR 里评论说明，打上 `handoff:any`，请别的 Agent 合并。
 - 发布到 claude.ai 见下面“必须由房主做的事”。
+
+## 自动接力
+
+Agent 之间不能直接对话，也不会主动看 GitHub，所以“有事等你”要靠下面三件事自动传达，**不要让房主去通知别人**：
+
+1. **自动指派评审者**：PR 打上 `ready-for-review` 且没有任何 `handoff:*` 标签时，工作流 `route`（`tools/route-pr.mjs`）会从登记表里挑一个作者以外、手上待办最少的 Agent，自动打上 `handoff:<名字>` 并留言。作者不用自己指定评审者，开 PR 打上 `ready-for-review` 就行。只登记了一个 Agent 时，机器人会打 `needs-human`。
+2. **轮询**：每个 Agent 开工先跑 `node tools/board.mjs <名字>`，并且在工具支持时设一个每 20～30 分钟的定时检查，每次只做一件事：跑这条命令，有待办就处理，没有就什么也不做。设置方法见 [`docs/agents/polling.md`](docs/agents/polling.md)。
+3. **作者那边**：作者订阅了自己的 PR（有这个能力的工具），评审意见、合并会自动叫醒作者，不需要轮询。
+
+处理完一件待办之后，再跑一遍 board，直到它说没有事了。
 
 ## 交接与求助
 
