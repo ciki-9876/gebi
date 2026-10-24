@@ -24,11 +24,40 @@ head = ('<!doctype html><html><head><meta charset="utf-8">'
 open('preview.html', 'w', encoding='utf-8').write(head + page + '</body></html>')
 
 
+BLOBS = os.path.join('dev', '.blobs')
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path.split('?')[0] == '/app.js':
+        path = self.path.split('?')[0]
+        if path == '/app.js':
             subprocess.run(['node', 'tools/build.mjs'], check=False, stdout=subprocess.DEVNULL)
+        if path.startswith('/_blob/'):
+            return self.blob_get(path[7:])
         super().do_GET()
+
+    # 模拟 assets 的 /_blob/<id>：PUT 存，GET 取（dev/mock-claude.js 用）
+    def do_PUT(self):
+        bid = self.path.split('?')[0][7:]
+        if not self.path.startswith('/_blob/') or not bid.isalnum():
+            return self.send_error(404)
+        os.makedirs(BLOBS, exist_ok=True)
+        data = self.rfile.read(int(self.headers.get('content-length', 0)))
+        open(os.path.join(BLOBS, bid), 'wb').write(data)
+        open(os.path.join(BLOBS, bid + '.type'), 'w').write(self.headers.get('content-type', 'application/octet-stream'))
+        self.send_response(201)
+        self.end_headers()
+
+    def blob_get(self, bid):
+        f = os.path.join(BLOBS, bid)
+        if not bid.isalnum() or not os.path.exists(f):
+            return self.send_error(404)
+        data = open(f, 'rb').read()
+        self.send_response(200)
+        self.send_header('content-type', open(f + '.type').read())
+        self.send_header('content-length', str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
 
 port = 8765

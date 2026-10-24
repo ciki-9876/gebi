@@ -1,5 +1,6 @@
 /preview.html
 __pycache__/
+/dev/.blobs/
 .DS_Store
 *.bin
 node_modules/

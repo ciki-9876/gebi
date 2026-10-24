@@ -35,6 +35,7 @@ function syncChrome() {
   $('#bell').hidden = !(CLOUD.ready && (myRoomKey() || ups.replies.length || roomMessages && CLOUD.msgs.has(CLOUD.me.id)));
   $('#bellBadge').hidden = !ups.count; $('#bellBadge').textContent = ups.count > 99 ? '99+' : ups.count;
   $('#guestsBtn').hidden = !(S.view === 'room' && iOwnRoom(rk));
+  $('#pubBtn').hidden = !(S.view === 'room' && S.room && S.room.mine);
   if (S.view === 'room' && CLOUD.ready && rk) { $('#stVisit').textContent = roomVisitors(rk).length; $('#stLike').parentElement.hidden = true; $('#stDemo').hidden = true; $('#stVisitLbl').textContent = '来过的人'; }
   else { $('#stLike').parentElement.hidden = false; $('#stDemo').hidden = false; $('#stVisitLbl').textContent = '今日访客'; }
   $('#buildbar').hidden = !(S.mode === 'build' && S.view === 'room');

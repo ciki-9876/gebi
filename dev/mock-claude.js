@@ -25,5 +25,15 @@
   };
   const user={me:async()=>me,id:async()=>me.id,isOwner:async()=>me.isOwner,canEdit:async()=>true,can:async()=>params.get('ro')==='1'?false:true,
     profiles:async(ids)=>Object.fromEntries([].concat(ids).map(i=>[i,{id:i,name:i==='u_owner'?'大K':i==='u_guest'?'小鱼':'',avatarUrl:'',color:'#888',email:null,isMe:i===me.id,guest:false}]))};
-  window.claude={use:async(n)=>n==='db'?db:n==='user'?user:null};
+  // assets：和真实运行时一样只收这些类型、单个 20 MiB，文件经 dev/serve.py 存在 dev/.blobs/
+  const ACCEPT=/^(image\/|video\/|font\/)|^(application\/pdf|text\/csv|text\/markdown|text\/plain|application\/json|text\/css|text\/javascript)$/;
+  const assets={upload:async(blob,o)=>{const type=(o&&o.type)||blob.type;if(!ACCEPT.test(type||''))throw {code:'unsupported_type',message:type};if(blob.size>20*1024*1024)throw {code:'too_large',message:'20 MiB'};
+      const id=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
+      const r=await fetch('/_blob/'+id,{method:'PUT',headers:{'content-type':type},body:blob});if(!r.ok)throw {code:'store_unavailable',message:String(r.status)};
+      return {id,url:'/_blob/'+id,sizeBytes:blob.size,contentType:type};},
+    list:async()=>({assets:[],usage:{files:0,bytes:0,maxFiles:1000,maxBytes:1e9}}),delete:async()=>({deleted:true})};
+  // sample：加 ?sample=1 时模拟 Bit，只会按发布台的提示词回一段 JSON
+  const sample=Object.assign(async(input)=>{const s=typeof input==='string'?input:input.map(m=>m.content).join('\n');const t=(/现在的名称：(.*)/.exec(s)||[])[1]||'作品';const c=JSON.parse((/从 (\[.*?\]) 里选/.exec(s)||[0,'["kiosk"]'])[1]);
+      return {text:JSON.stringify({title:t.trim().slice(0,12),desc:'（模拟的 Bit）'+t.trim()+'的一句话介绍',carrier:c[0]}),truncated:false};},{limits:async()=>({images:false,tools:false})});
+  window.claude={use:async(n)=>n==='db'?db:n==='user'?user:n==='assets'?(params.get('ro')==='1'?null:assets):n==='sample'&&params.get('sample')==='1'?sample:null};
 })();

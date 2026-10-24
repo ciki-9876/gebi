@@ -45,6 +45,7 @@ async function boot() {
     const r = residentOfKey(deep[1]) || RESIDENTS.find(x => x.no === deep[1]);
     if (r) { S.via = VIA[deep[2]] ? deep[2] : 'link'; diveInto(r); } else toast('这个房间链接找不到了，可能房主搬走了');
   }
+  pubFromHash();
   try {
     if (window.claude && window.claude.use) {
       const s = await window.claude.use('sample');

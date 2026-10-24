@@ -1996,6 +1996,7 @@ function cleanEntry(e, prefix) {
   const o = { kind, title: String(e.title || '').slice(0, 30), desc: String(e.desc || '').slice(0, 80), url: validUrl(e.url) ? String(e.url).trim().slice(0, 500) : '' };
   const fr = cleanFrom(e.from); if (fr) o.from = fr;
   if (typeof e.work === 'string' && WORK_RE.test(e.work) && (!prefix || e.work.startsWith(prefix) || (fr && !fr.adapted))) { o.work = e.work; o.workBytes = +e.workBytes || 0; }
+  if (e.art) { const a = cleanArt(e.art, prefix, !!(fr && !fr.adapted)); if (a) o.art = a; }
   if (e.open === 'tab') o.open = 'tab';
   if (e.size === 'wide' || e.size === 'tall') o.size = e.size;
   if (typeof e.color === 'string' && /^#[0-9a-f]{6}$/i.test(e.color)) o.color = e.color;
@@ -2839,7 +2840,7 @@ function activate(g) {
     case 'music': walkTo(g, { panel: false }); toggleMusic(); break;
     case 'door': exitToGlobe(); break;
     case 'view': lookOutside(g); break;
-    default: if (canEmbed(e)) openWindow(g); else openEntry(g);
+    default: if (e.art || canEmbed(e)) openWindow(g); else openEntry(g);
   }
 }
 function beginPanel(kind, g) { if (S.win) minimizeWin(S.win, true); if (S.panel) closePanel(true); S.panel = { kind, g }; S.focus = g; if (g) focusOn(g, { loose: kind === 'agent' }); }
@@ -3231,6 +3232,7 @@ function openWindow(g) {
   showWin(w);
 }
 function createWin(g, e) {
+  if (e.art) return createArtWin(g, e);
   const src = embedSource(e), iid = g.userData.iid;
   const size = e.size || (e.kind === 'game' || e.kind === 'game2' ? 'wide' : 'tall');
   const kc = KIND_COLOR[e.kind] || KIND_COLOR.link;
@@ -3341,7 +3343,7 @@ function minimizeWin(w, quiet) {
 }
 function closeWin(w, quiet) {
   if (!w || !WINS.has(w.iid)) return;
-  w.timers.forEach(clearTimeout); clearTimeout(w.hs);
+  w.timers.forEach(clearTimeout); clearTimeout(w.hs); if (w.onClose) w.onClose();
   w.el.remove(); WINS.delete(w.iid);
   if (game.remote === w) { game.remote = null; game.mode = 'attract'; gReset(); }
   const sc = screenOf(w.g); if (sc && sc.restore) sc.restore();
@@ -3442,7 +3444,7 @@ function renderInspector(g) {
     ${!e ? `<p class="mute small u-mb3">这件物件现在只是装饰。任何物件都可以变成作品入口。</p><button type="button" class="btn" id="inMake">把它变成作品入口</button>` : kept ? `<p class="small u-mb3"><span class="tag">收藏品</span> 收藏自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」</p><p class="mute small u-m0">作品属于原作者，这里只负责展示它：访客点开会链回 TA 的房间。想改成自己的版本，请去原房间点“改编一份”。不想留了，直接删除这件物件就行。</p>` : `
     <form id="inForm">
       ${e.from ? `<p class="small u-mb3"><span class="tag pink">改编</span> 改编自 <b>${esc(e.from.by || '一位邻居')}</b> 的「${esc(e.from.title)}」，署名会一直保留。</p>` : ''}
-      ${builtin ? `<p class="small u-mb3"><span class="tag ${e.kind === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[e.kind])}</span> <span class="mute">内置入口，打开方式由房间提供</span></p>` :
+      ${builtin ? `<p class="small u-mb3"><span class="tag ${e.kind === 'agent' ? 'cyan' : ''}">${esc(KIND_LABEL[e.kind])}</span> <span class="mute">${e.art ? esc(artInfo(e)) + '。要换文件，删掉它重新发布' : '内置入口，打开方式由房间提供'}</span></p>` :
       `<div class="field"><label>作品类型</label><div class="seg" id="inKind">${BIND_KINDS.map(k => `<button type="button" data-k="${k}" aria-pressed="${k === kindSel}">${KIND_LABEL[k]}</button>`).join('')}</div></div>`}
       <div class="field"><label for="inTitle">作品名称</label><input class="input" id="inTitle" maxlength="20" value="${esc(e.title || '')}"></div>
       ${builtin ? '' : `<div class="field"><label>外观 · 主题色</label><div class="swatches" id="inColor">${SW.map(c => `<button type="button" data-c="${c}" style="${c ? 'background:' + c : ''}" aria-pressed="${(e.color || '') === c}" aria-label="${c || '默认'}">${c ? '' : '默认'}</button>`).join('')}</div><span class="mute small">展示屏和街机会换成这个颜色，改编的作品可以先从换色开始。</span></div>`}
@@ -3453,7 +3455,7 @@ function renderInspector(g) {
         <textarea class="input code" id="inPaste" rows="5" hidden placeholder="<!doctype html> 粘贴完整的单文件 HTML"></textarea><span class="err" id="inHostErr" hidden></span></div>
       <div class="field"><label>打开方式</label><div class="seg" id="inOpen"><button type="button" data-v="embed" aria-pressed="${e.open !== 'tab'}">站内窗口</button><button type="button" data-v="tab" aria-pressed="${e.open === 'tab'}">新标签页</button></div></div>
       <div class="field"><label>窗口形状</label><div class="seg" id="inSize">${[['tall', '竖版 · 适合工具'], ['wide', '横版 · 适合游戏']].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${(e.size || (/game/.test(e.kind) ? 'wide' : 'tall')) === v}">${l}</button>`).join('')}</div></div>` : ''}
-      ${builtin ? '' : `<div class="field"><label for="inDesc">一句话介绍</label><textarea class="input" id="inDesc" maxlength="60" rows="2">${esc(e.desc || '')}</textarea></div>`}
+      ${builtin && !e.art ? '' : `<div class="field"><label for="inDesc">一句话介绍</label><textarea class="input" id="inDesc" maxlength="60" rows="2">${esc(e.desc || '')}</textarea></div>`}
       ${['shiguang', 'app', 'game', 'game2', 'web'].includes(e.kind) ? `<div class="divider"></div><p class="section-t">客户端下载（可选）</p><p class="mute small u-mb3">访客打开作品时会看到适合自己设备的那一项。桌面安装包建议用 GitHub Releases 的 latest 固定链接，发新版不用改这里。</p>
       ${PLATFORMS.map(p => { const it = (e.downloads || {})[p.k] || {}; return `<div class="dl-edit"><label for="dl_${p.k}">${p.label}</label><input class="input" id="dl_${p.k}" inputmode="url" placeholder="${esc(p.ph)}" value="${esc(it.url || '')}"><input class="input" id="dlv_${p.k}" maxlength="12" placeholder="版本号" value="${esc(it.ver || '')}"></div>`; }).join('')}<span class="err" id="dlErr" hidden></span>` : ''}
     </form>`}`,
@@ -3502,7 +3504,8 @@ function renderInspector(g) {
       try { await saveWork(path, $('#inTitle').value.trim() || e.title || '作品', pendingHtml); } catch (x) { hostErr.textContent = '托管没成功，稍后再试。'; hostErr.hidden = false; return; }
       e.work = path; e.workBytes = new Blob([pendingHtml]).size; e.open = 'embed';
     } else if (unhost) { delete e.work; delete e.workBytes; }
-    if (!builtin) { e.kind = kind || 'web'; const d = $('#inDesc'); if (d) e.desc = d.value.trim(); }
+    if (!builtin) e.kind = kind || 'web';
+    if (!builtin || e.art) { const d = $('#inDesc'); if (d) e.desc = d.value.trim(); }
     if (!builtin) { if (colorPick) e.color = colorPick; else delete e.color; }
     e.title = $('#inTitle').value.trim() || e.title || '未命名作品';
     if (u) e.url = u.value.trim();
@@ -3648,6 +3651,7 @@ function syncChrome() {
   $('#bell').hidden = !(CLOUD.ready && (myRoomKey() || ups.replies.length || roomMessages && CLOUD.msgs.has(CLOUD.me.id)));
   $('#bellBadge').hidden = !ups.count; $('#bellBadge').textContent = ups.count > 99 ? '99+' : ups.count;
   $('#guestsBtn').hidden = !(S.view === 'room' && iOwnRoom(rk));
+  $('#pubBtn').hidden = !(S.view === 'room' && S.room && S.room.mine);
   if (S.view === 'room' && CLOUD.ready && rk) { $('#stVisit').textContent = roomVisitors(rk).length; $('#stLike').parentElement.hidden = true; $('#stDemo').hidden = true; $('#stVisitLbl').textContent = '来过的人'; }
   else { $('#stLike').parentElement.hidden = false; $('#stDemo').hidden = false; $('#stVisitLbl').textContent = '今日访客'; }
   $('#buildbar').hidden = !(S.mode === 'build' && S.view === 'room');
@@ -4043,6 +4047,14 @@ async function openQuickPlay(it) {
   ensureQP(); const e = it.e; QP.it = it;
   const body = QP.el.querySelector('.qp-body'); body.innerHTML = '';
   QP.el.querySelector('.qp-t b').textContent = e.title || '作品';
+  if (e.art) {
+    QP.el.querySelector('.qp-t span').textContent = `${it.handle} · ${it.city || ''} · ${artInfo(e)}`;
+    QP.el.querySelector('[data-q="tab"]').hidden = true; QP.el.querySelector('[data-q="collect"]').hidden = !!it.mine;
+    const box = document.createElement('div'); box.className = 'art-view'; body.appendChild(box); QP.el.hidden = false;
+    renderArt(box, e, { autorun: true });
+    if (it.real && !it.key.startsWith('demo:')) recordVisit(it.key, '试玩 ' + String(e.title || '').slice(0, 20));
+    return;
+  }
   const real = embedSource(e);
   if (!real && it.real) {
     // 真实住户还没上传：不放占位动画，直接说清楚
@@ -4419,6 +4431,957 @@ let toastT = 0;
 function toast(msg, ms = 2600) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 
 /* ============================================================
+   AI artifacts · types: what each kind of AI output is, which
+   object carries it, where it is stored. Protocol: docs/PUBLISH.md
+   ============================================================ */
+const ART_DB_MAX = 200 * 1024;
+const ART_ASSET_MAX = 20 * 1024 * 1024;
+const ART_PROJECT_TEXT_MAX = 1024 * 1024;
+const ART_LINK_MAX = 48 * 1024;
+const TEXT_EXTS = ['html', 'htm', 'md', 'markdown', 'txt', 'json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini', 'env', 'gitignore', 'svg'];
+// store: work = 单文件网页（沿用托管作品）· text = 文本进数据库 · asset = 二进制进 assets · project = 拆成多份
+const ART_TYPES = {
+  web: { label: '网页', kind: 'web', carriers: ['kiosk', 'arcade', 'monitor'], store: 'work', exts: ['html', 'htm'] },
+  game: { label: '小游戏', kind: 'game2', carriers: ['arcade', 'kiosk'], store: 'work', exts: [] },
+  doc: { label: '文档', kind: 'doc', carriers: ['reader', 'monitor', 'crate'], store: 'text', exts: ['md', 'markdown', 'txt'] },
+  image: { label: '图片', kind: 'image', carriers: ['easel', 'kiosk', 'crate'], store: 'asset', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'] },
+  video: { label: '视频', kind: 'video', carriers: ['tv', 'kiosk', 'crate'], store: 'asset', exts: ['mp4', 'webm', 'mov', 'm4v'] },
+  audio: { label: '音频', kind: 'audio', carriers: ['phono', 'crate'], store: 'asset', exts: ['mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac'] },
+  pdf: { label: 'PDF', kind: 'pdf', carriers: ['reader', 'crate'], store: 'asset', exts: ['pdf'] },
+  project: { label: '项目', kind: 'project', carriers: ['workbench', 'serverRack', 'crate'], store: 'project', exts: ['zip'] },
+  model: { label: '3D 模型', kind: 'model', carriers: ['pedestal', 'crate'], store: 'asset', exts: ['glb', 'gltf'] },
+  data: { label: '代码与数据', kind: 'data', carriers: ['monitor', 'reader', 'crate'], store: 'text', exts: ['json', 'csv', 'tsv', 'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'css', 'scss', 'py', 'rb', 'go', 'rs', 'java', 'c', 'cpp', 'h', 'hpp', 'cs', 'swift', 'kt', 'sql', 'yaml', 'yml', 'toml', 'xml', 'sh', 'lua', 'php', 'vue', 'svelte', 'ini'] },
+  file: { label: '文件', kind: 'file', carriers: ['crate'], store: 'asset', exts: [] }
+};
+const ART_KINDS = Object.values(ART_TYPES).map(t => t.kind).filter(k => !['web', 'game2'].includes(k));
+const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', avif: 'image/avif', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', m4v: 'video/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac', aac: 'audio/aac', pdf: 'application/pdf', glb: 'model/gltf-binary', gltf: 'model/gltf+json', json: 'application/json', csv: 'text/csv', tsv: 'text/tab-separated-values', md: 'text/markdown', markdown: 'text/markdown', txt: 'text/plain', html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript', woff: 'font/woff', woff2: 'font/woff2', ttf: 'font/ttf', otf: 'font/otf', ico: 'image/x-icon' };
+Object.assign(KIND_LABEL, { doc: '文档', image: '图片', video: '视频', audio: '音频', pdf: 'PDF', project: '项目', model: '3D 模型', data: '代码与数据', file: '文件' });
+Object.assign(KIND_COLOR, { doc: ['#c9a06a', '#8a5a2b'], image: ['#ff9a3d', '#ff5aa8'], video: ['#3d5afe', '#62e6ff'], audio: ['#7c4dff', '#ff5aa8'], pdf: ['#e04646', '#ff9a3d'], project: ['#34b88a', '#3d9be8'], model: ['#62e6ff', '#7ee0a1'], data: ['#2b2f3a', '#62e6ff'], file: ['#56607a', '#a99db4'] });
+
+function extOf(name) { const m = /\.([a-z0-9]+)$/i.exec(String(name || '')); return m ? m[1].toLowerCase() : ''; }
+function baseName(name) { return String(name || '').split('/').pop().replace(/\.[a-z0-9]+$/i, ''); }
+function mimeOf(name, fallback) { return MIME[extOf(name)] || fallback || 'application/octet-stream'; }
+function isTextName(name) { return TEXT_EXTS.includes(extOf(name)) || /(^|\/)(readme|license|makefile|dockerfile)$/i.test(name); }
+function typeOfName(name, mime) {
+  const ext = extOf(name);
+  for (const [t, d] of Object.entries(ART_TYPES)) if (d.exts.includes(ext)) return t;
+  if (/^image\//.test(mime || '')) return 'image';
+  if (/^video\//.test(mime || '')) return 'video';
+  if (/^audio\//.test(mime || '')) return 'audio';
+  if (mime === 'application/pdf') return 'pdf';
+  if (/zip/.test(mime || '')) return 'project';
+  if (/^text\//.test(mime || '')) return 'doc';
+  return 'file';
+}
+// 粘贴的文本或 .html 文件：网页、小游戏、文档还是代码
+function sniffText(text) {
+  const t = String(text || '').trim();
+  if (/^<(!doctype html|html|head|body)\b/i.test(t) || (/<(script|canvas|div|style|svg)\b/i.test(t) && /<\/\w+>/.test(t) && !/^#{1,6} /m.test(t))) {
+    return /<canvas\b/i.test(t) && /(keydown|requestAnimationFrame|gamepad|score)/i.test(t) ? 'game' : 'web';
+  }
+  if (/^[[{]/.test(t)) { try { JSON.parse(t); return 'data'; } catch (e) {} }
+  const lines = t.split('\n'), md = lines.filter(l => /^(#{1,6} |[-*] |\d+\. |> |```)/.test(l)).length;
+  const code = lines.filter(l => /^(import |export |from |def |class |function |const |let |var |package |#include|SELECT |CREATE )|[;{}]\s*$/.test(l)).length;
+  return code > md * 2 && code > lines.length * .25 ? 'data' : 'doc';
+}
+function titleFromText(text, type) {
+  const t = String(text || '');
+  if (type === 'web' || type === 'game') { const m = /<title>([^<]{1,60})<\/title>/i.exec(t) || /<h1[^>]*>([^<]{1,60})<\/h1>/i.exec(t); if (m) return m[1].trim(); }
+  const h = /^#{1,2} +(.{1,60})$/m.exec(t); if (h) return h[1].trim();
+  const first = t.split('\n').map(s => s.trim()).find(Boolean); return first ? first.replace(/^[#>*\-\s]+/, '').slice(0, 30) : '';
+}
+function artCarrier(type, want) { const d = ART_TYPES[type] || ART_TYPES.file; return d.carriers.includes(want) ? want : d.carriers[0]; }
+function carrierName(type) { return (ITEMS[type] && ITEMS[type].name) || type; }
+
+/* ---------- cleaning entry.art from other people's rooms ---------- */
+const ASSET_RE = /^(local:)?[A-Za-z0-9_.-]{1,100}$/;
+function cleanArt(a, prefix, collected) {
+  if (!a || typeof a !== 'object' || !ART_TYPES[a.t]) return null;
+  const o = { t: a.t, name: String(a.name || '').slice(0, 80), mime: String(a.mime || '').slice(0, 60), bytes: Math.max(0, +a.bytes || 0) };
+  if (typeof a.asset === 'string' && ASSET_RE.test(a.asset)) o.asset = a.asset;
+  if (validUrl(a.url)) o.url = String(a.url).trim().slice(0, 500);
+  if (typeof a.work === 'string' && WORK_RE.test(a.work) && (!prefix || a.work.startsWith(prefix) || collected)) o.work = a.work;
+  else if (!CLOUD.ready && typeof a.work === 'string' && /^local:[A-Za-z0-9_-]{1,60}$/.test(a.work)) o.work = a.work;
+  if (a.made) o.made = String(a.made).slice(0, 30);
+  if (a.w > 0 && a.h > 0) { o.w = Math.round(+a.w); o.h = Math.round(+a.h); }
+  return o.asset || o.url || o.work ? o : null;
+}
+/* ============================================================
+   AI artifacts · storage: binaries go to the artifact `assets`
+   store (or IndexedDB offline), text to db docs, projects are
+   unzipped in the browser and split across both.
+   ============================================================ */
+const ART_URLS = new Map();
+let artIdb = null;
+function idb() {
+  return artIdb || (artIdb = new Promise((res, rej) => {
+    const r = indexedDB.open('gebi-art', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('blobs');
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+}
+async function idbDo(mode, fn) {
+  const d = await idb();
+  return new Promise((res, rej) => { const tx = d.transaction('blobs', mode), q = fn(tx.objectStore('blobs')); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); });
+}
+function artAssets() {
+  if (!CLOUD.ready || !window.claude || !window.claude.use) return Promise.resolve(null);
+  if (!CLOUD.assetsP) CLOUD.assetsP = window.claude.use('assets').catch(() => null);
+  return CLOUD.assetsP;
+}
+function artErr(msg) { const e = new Error(msg); e.friendly = true; return e; }
+const rid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------- binaries ---------- */
+// assets 只收这些类型；音频和模型不在其中，见 docs/PUBLISH.md
+const ACCEPT_RE = /^(image\/|video\/|font\/)|^(application\/pdf|text\/csv|text\/markdown|text\/plain|application\/json)$/;
+const DB_BLOB_MAX = 2 * 1024 * 1024;
+function assetType(name, type) {
+  const t = mimeOf(name, type);
+  if (ACCEPT_RE.test(t)) return t;
+  if (/^audio\//.test(t)) return /ogg/.test(t) ? 'video/ogg' : /webm/.test(t) ? 'video/webm' : 'video/mp4';
+  return '';
+}
+async function putBlob(blob, type) {
+  if (blob.size > ART_ASSET_MAX) throw artErr(`文件有 ${mb(blob.size)}，超过了 20 MB。压缩一下，或者把它放到网上后用链接发布。`);
+  if (!CLOUD.ready) { const k = rid('local:a'); await idbDo('readwrite', s => s.put(blob, k)); return k; }
+  const assets = await artAssets();
+  if (!assets) throw artErr('这个页面还不能上传文件：需要房主在发布页面时开启文件上传（assets 能力）。');
+  try { return (await assets.upload(blob, { type })).id; }
+  catch (e) {
+    const c = e && e.code;
+    if (c === 'store_unavailable') { try { return (await assets.upload(blob, { type })).id; } catch (x) {} }
+    throw artErr(c === 'unsupported_type' || c === 'invalid_request' ? '这种文件不能直接上传。换成常见格式，或者打包成 .zip 当作项目发布。' : c === 'quota_exceeded' ? '社区的文件空间满了，请联系房主清理。' : '上传没成功，稍后再试一次。');
+  }
+}
+// assets 不收的二进制（3D 模型、其他文件）：≤ 2 MB 时拆成 base64 存进数据库
+async function saveDbBlob(base, bytes, mime) {
+  if (bytes.length > DB_BLOB_MAX) throw artErr(`这种文件只能存 2 MB 以内，这个有 ${mb(bytes.length)}。把它放到网上后用链接发布。`);
+  const b = bytesToB64(bytes), n = Math.max(1, Math.ceil(b.length / CHUNK));
+  for (let i = 0; i < n; i++) await saveArtDoc(`${base}-c${i}`, { b64: b.slice(i * CHUNK, (i + 1) * CHUNK) });
+  await saveArtDoc(base, { kind: 'blob', mime, bytes: bytes.length, chunks: n });
+}
+async function loadDbBlob(path) {
+  const m = await loadArtDoc(path); if (!m) return null;
+  if (typeof m.text === 'string') return new Blob([m.text], { type: (assetType(m.name || '', '') || mimeOf(m.name || '', 'text/plain')).replace(/^text\/html$/, 'text/plain') + ';charset=utf-8' });
+  if (m.kind !== 'blob') return null;
+  const parts = await Promise.all(Array.from({ length: clamp(+m.chunks || 0, 0, 40) }, (_, i) => loadArtDoc(`${path}-c${i}`)));
+  return new Blob([b64ToBytes(parts.map(d => (d && d.b64) || '').join(''))], { type: String(m.mime || 'application/octet-stream') });
+}
+async function artUrl(art) {
+  if (!art) return '';
+  if (art.url) return art.url;
+  const key = art.asset || art.work; if (!key) return '';
+  if (art.asset && !art.asset.startsWith('local:')) return '/_blob/' + art.asset;
+  if (ART_URLS.has(key)) return ART_URLS.get(key);
+  const b = art.asset ? await idbDo('readonly', s => s.get(art.asset)).catch(() => null) : await loadDbBlob(art.work);
+  const u = b ? URL.createObjectURL(b) : '';
+  ART_URLS.set(key, u); return u;
+}
+function mb(n) { return n < 1024 * 1024 ? kb(n) : (n / 1048576).toFixed(1) + ' MB'; }
+
+/* ---------- text docs (reuse the hosted-works paths) ---------- */
+async function saveArtDoc(path, doc) {
+  if (path.startsWith('local:')) { store.set('gebi3.work.' + path.slice(6), doc); return; }
+  await cloudWrite(path, Object.assign({ updatedAt: Date.now() }, doc));
+}
+async function loadArtDoc(path) {
+  if (path.startsWith('local:')) return store.get('gebi3.work.' + path.slice(6), null);
+  if (!CLOUD.ready || !WORK_RE.test(path)) return null;
+  try { const s = await CLOUD.db.doc(path).get(); return s.exists ? s.data() : null; } catch (e) { return null; }
+}
+async function loadArtText(art) {
+  if (art.work) { const d = await loadArtDoc(art.work); return d ? String(d.text || '') : null; }
+  const u = await artUrl(art); if (!u) return null;
+  try { const r = await fetch(u); return r.ok ? await r.text() : null; } catch (e) { return null; }
+}
+
+/* ---------- zip (read) ---------- */
+const JUNK_RE = /(^|\/)(__MACOSX|\.git|node_modules|\.DS_Store|Thumbs\.db|\.idea|\.vscode)(\/|$)/;
+async function unzip(buf) {
+  const u8 = new Uint8Array(buf), dv = new DataView(buf), dec = new TextDecoder();
+  let eocd = -1;
+  for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw artErr('这不是有效的 zip 文件。');
+  const n = dv.getUint16(eocd + 10, true), out = [];
+  let p = dv.getUint32(eocd + 16, true);
+  for (let k = 0; k < n; k++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) throw artErr('zip 文件损坏了，重新打包再试。');
+    const flags = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), usize = dv.getUint32(p + 24, true);
+    const nl = dv.getUint16(p + 28, true), xl = dv.getUint16(p + 30, true), cl = dv.getUint16(p + 32, true), off = dv.getUint32(p + 42, true);
+    const path = dec.decode(u8.subarray(p + 46, p + 46 + nl)).replace(/\\/g, '/');
+    p += 46 + nl + xl + cl;
+    if (path.endsWith('/') || JUNK_RE.test(path) || (flags & 1)) continue;
+    const start = off + 30 + dv.getUint16(off + 26, true) + dv.getUint16(off + 28, true);
+    out.push({ path, size: usize, method, raw: u8.subarray(start, start + csize) });
+  }
+  return out;
+}
+async function inflate(ent) {
+  if (ent.method === 0) return ent.raw;
+  if (ent.method !== 8) throw artErr(`zip 里的 ${ent.path} 用了不支持的压缩方式。`);
+  if (typeof DecompressionStream === 'undefined') throw artErr('这个浏览器不能解压 zip，请用最新版的 Chrome、Edge 或 Safari。');
+  const s = new Blob([ent.raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+async function readZip(buf) {
+  const ents = await unzip(buf), files = [];
+  for (const e of ents) files.push({ path: e.path, bytes: await inflate(e) });
+  return stripRoot(files);
+}
+function stripRoot(files) {
+  const tops = new Set(files.map(f => f.path.split('/')[0]));
+  if (tops.size === 1 && files.every(f => f.path.includes('/'))) { const r = [...tops][0] + '/'; files.forEach(f => { f.path = f.path.slice(r.length); }); }
+  return files.filter(f => f.path && !JUNK_RE.test(f.path));
+}
+
+/* ---------- projects ---------- */
+const CHUNK = 150 * 1024;
+const B64_MAX = 96 * 1024;
+function bytesToB64(u8) { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); }
+function b64ToBytes(b) { const s = atob(b), u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; }
+function findEntry(paths, want) {
+  if (want && paths.includes(want)) return want;
+  return paths.find(p => /^index\.html?$/i.test(p)) || paths.filter(p => /(^|\/)index\.html?$/i.test(p)).sort((a, b) => a.length - b.length)[0] || paths.find(p => /\.html?$/i.test(p)) || '';
+}
+// files: [{ path, bytes?: Uint8Array, text?: string }] → 存好后返回清单文档的路径
+async function saveProject(base, title, files, wantEntry, onStep) {
+  const dec = new TextDecoder('utf-8', { fatal: true }), recs = [], parts = [], skipped = [];
+  let textBytes = 0, total = 0;
+  for (const f of files.slice(0, 400)) {
+    let text = f.text;
+    if (text == null && isTextName(f.path)) { try { text = dec.decode(f.bytes); } catch (e) { text = null; } }
+    const size = text != null ? new Blob([text]).size : f.bytes.length;
+    total += size;
+    if (text != null) {
+      textBytes += size;
+      if (textBytes > ART_PROJECT_TEXT_MAX) throw artErr('项目里的代码和文本加起来超过了 1 MB。删掉构建产物、依赖目录后再打包。');
+      const n = Math.max(1, Math.ceil(text.length / CHUNK));
+      for (let i = 0; i < n; i++) parts.push([f.path, i, text.slice(i * CHUNK, (i + 1) * CHUNK)]);
+      recs.push({ p: f.path, s: size, k: 't', n });
+      continue;
+    }
+    const mime = mimeOf(f.path);
+    if (/^(image|video|font)\//.test(mime) || mime === 'application/pdf') {
+      if (onStep) onStep(`上传 ${f.path}`);
+      try { recs.push({ p: f.path, s: size, k: 'a', a: await putBlob(new Blob([f.bytes], { type: mime }), mime), m: mime }); continue; } catch (e) { if (size > B64_MAX) { skipped.push(f.path); continue; } }
+    }
+    if (size <= B64_MAX) { const b = bytesToB64(f.bytes); parts.push([f.path, 0, b]); recs.push({ p: f.path, s: size, k: 'b', m: mime }); }
+    else skipped.push(f.path);
+  }
+  if (files.length > 400) skipped.push(`另外 ${files.length - 400} 个文件`);
+  const chunks = []; let cur = [], len = 0;
+  for (const pt of parts) { if (cur.length && len + pt[2].length > CHUNK) { chunks.push(cur); cur = []; len = 0; } cur.push(pt); len += pt[2].length + pt[0].length; }
+  if (cur.length) chunks.push(cur);
+  for (let i = 0; i < chunks.length; i++) { if (onStep) onStep(`保存代码 ${i + 1}/${chunks.length}`); await saveArtDoc(`${base}-c${i}`, { parts: chunks[i] }); }
+  const paths = recs.map(r => r.p);
+  const readme = paths.find(p => /^readme(\.md|\.markdown|\.txt)?$/i.test(p)) || '';
+  await saveArtDoc(base, { title: String(title).slice(0, 30), kind: 'project', entry: findEntry(paths, wantEntry), readme, files: recs, chunks: chunks.length, skipped: skipped.slice(0, 40), bytes: total });
+  return { bytes: total, count: recs.length, skipped };
+}
+async function loadProject(path) {
+  const m = await loadArtDoc(path);
+  if (!m || m.kind !== 'project' || !Array.isArray(m.files)) return null;
+  const docs = await Promise.all(Array.from({ length: clamp(+m.chunks || 0, 0, 40) }, (_, i) => loadArtDoc(`${path}-c${i}`)));
+  const got = new Map();
+  docs.forEach(d => (d && Array.isArray(d.parts) ? d.parts : []).forEach(([p, i, s]) => { if (!got.has(p)) got.set(p, []); got.get(p)[+i || 0] = String(s || ''); }));
+  const files = new Map();
+  m.files.slice(0, 400).forEach(r => {
+    const p = String(r.p || '').slice(0, 200); if (!p) return;
+    if (r.k === 't') files.set(p, { text: (got.get(p) || []).join(''), size: +r.s || 0 });
+    else if (r.k === 'b') files.set(p, { b64: (got.get(p) || [''])[0], mime: String(r.m || mimeOf(p)), size: +r.s || 0 });
+    else if (r.k === 'a' && ASSET_RE.test(r.a || '')) files.set(p, { asset: r.a, mime: String(r.m || mimeOf(p)), size: +r.s || 0 });
+  });
+  return { title: String(m.title || ''), entry: String(m.entry || ''), readme: String(m.readme || ''), skipped: (m.skipped || []).map(String).slice(0, 40), bytes: +m.bytes || 0, files };
+}
+/* ============================================================
+   AI artifacts · carriers: the object each kind of artifact
+   lives in. The artifact itself shows on the object where it
+   can (picture on the easel, a frame on the TV, the model on
+   the pedestal); the rest show a cover drawn from the entry.
+   ============================================================ */
+function artCover(entry, cw, ch, opts = {}) {
+  const c = mkCanvas(cw, ch), g = c.getContext('2d'), art = entry.art || {};
+  const kc = KIND_COLOR[entry.kind] || KIND_COLOR.file;
+  if (opts.paper) { g.fillStyle = '#f3ecdc'; g.fillRect(0, 0, cw, ch); }
+  else { const gr = g.createLinearGradient(0, 0, cw, ch); gr.addColorStop(0, kc[0]); gr.addColorStop(1, kc[1]); g.fillStyle = gr; g.fillRect(0, 0, cw, ch); }
+  const ink = opts.paper ? '#2a2620' : '#fff', s = cw / 384;
+  g.fillStyle = ink; g.globalAlpha = .7; g.font = `500 ${15 * s}px ${FONT.body}`;
+  g.fillText((opts.tag || KIND_LABEL[entry.kind] || '作品') + (art.name && extOf(art.name) ? ' · .' + extOf(art.name) : ''), 18 * s, 32 * s);
+  g.globalAlpha = 1; g.font = `700 ${30 * s}px ${FONT.body}`;
+  wrapText(g, entry.title || '未命名作品', cw - 36 * s, 2).forEach((l, i) => g.fillText(l, 18 * s, 78 * s + i * 38 * s));
+  if (opts.lines) { g.globalAlpha = .35; for (let i = 0; i < opts.lines; i++) { g.fillStyle = ink; g.fillRect(18 * s, (150 + i * 16) * s, (cw - 36 * s) * (.55 + ((i * 37) % 40) / 100), 5 * s); } g.globalAlpha = 1; }
+  if (opts.play) { g.fillStyle = 'rgba(0,0,0,.35)'; g.beginPath(); g.arc(cw / 2, ch * .62, 34 * s, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(cw / 2 - 11 * s, ch * .62 - 17 * s); g.lineTo(cw / 2 + 19 * s, ch * .62); g.lineTo(cw / 2 - 11 * s, ch * .62 + 17 * s); g.fill(); }
+  return c;
+}
+function screenPlane(c, w, h, k = 1.05) { return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: texOf(c), color: new THREE.Color(k, k, k) })); }
+function paintFit(c, src, bg) {
+  const g = c.getContext('2d'), r = Math.min(c.width / src.width, c.height / src.height), w = src.width * r, h = src.height * r;
+  g.fillStyle = bg || '#0a0a0e'; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, (c.width - w) / 2, (c.height - h) / 2, w, h);
+}
+function legs(g, mat, w, d, h, t = .05) { [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => mesh(BG(t, h, t), mat, a * (w / 2 - t), h / 2, b * (d / 2 - t), g)); }
+
+function buildEasel(def) {
+  const g = new THREE.Group(), wood = M('#8a5a2b', .6), e = def.entry || { kind: 'image', title: '画' };
+  [[-.32, .12], [.32, .12]].forEach(([x, rz]) => { const l = mesh(BG(.05, 1.9, .05), wood, x, .95, .1, g); l.rotation.z = x < 0 ? -rz : rz; l.rotation.x = -.12; });
+  const back = mesh(BG(.05, 1.8, .05), wood, 0, .9, -.32, g); back.rotation.x = .3;
+  mesh(BG(.86, .05, .14), wood, 0, .62, .15, g);
+  const board = new THREE.Group(); board.position.set(0, 1.18, .16); board.rotation.x = -.12; g.add(board);
+  const c = artCover(e, 512, 384, { tag: '图片' }), pic = screenPlane(c, .8, .6, 1); pic.position.z = .03; board.add(pic);
+  const frame = mesh(BG(.86, .66, .04), M('#2a1d12', .5), 0, 0, 0, board);
+  artUrl(e.art).then(u => u && loadImg(u)).then(img => {
+    if (!img) return;
+    const a = clamp(img.width / img.height, .4, 2.5), w = a >= 1 ? .8 : .6 * a, h = a >= 1 ? .8 / a : .6;
+    const cc = mkCanvas(a >= 1 ? 768 : Math.round(768 * a), a >= 1 ? Math.round(768 / a) : 768); paintFit(cc, img);
+    pic.material.map = texOf(cc); pic.material.needsUpdate = true; pic.scale.set(w / .8, h / .6, 1);
+    frame.scale.set((w + .06) / .86, (h + .06) / .66, 1);
+  });
+  return g;
+}
+function buildTv(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'video', title: '视频' };
+  mesh(rboxGeo(1.5, .46, .5, .04), M('#3a2c22', .6), 0, .23, 0, g);
+  mesh(BG(1.3, .02, .02), GLOW('#62e6ff', 1.2), 0, .05, .26, g);
+  mesh(BG(.3, .06, .2), M('#16161c', .4, .5), 0, .49, 0, g);
+  mesh(BG(.06, .22, .06), M('#16161c', .4, .5), 0, .6, 0, g);
+  const head = new THREE.Group(); head.position.set(0, 1.16, .02); g.add(head);
+  mesh(rboxGeo(1.46, .86, .06, .03), M('#0d0d12', .35, .3), 0, 0, 0, head);
+  const c = artCover(e, 512, 288, { play: true, tag: '视频' }), sc = screenPlane(c, 1.38, .78); sc.position.z = .032; head.add(sc);
+  g.userData.screen = { canvas: c, tex: sc.material.map, restore() {} };
+  artUrl(e.art).then(u => {
+    if (!u) return;
+    const v = document.createElement('video'); v.muted = true; v.preload = 'auto'; v.playsInline = true; v.src = u;
+    v.addEventListener('loadeddata', () => { try { v.currentTime = Math.min(1, (v.duration || 2) / 3); } catch (x) {} }, { once: true });
+    v.addEventListener('seeked', () => {
+      try { paintFit(c, v); } catch (x) { return; }
+      const x = c.getContext('2d'), gr = x.createLinearGradient(0, 180, 0, 288); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.75)');
+      x.fillStyle = gr; x.fillRect(0, 180, 512, 108); x.fillStyle = '#fff'; x.font = `700 26px ${FONT.body}`; x.fillText(wrapText(x, e.title || '视频', 470, 1)[0] || '', 20, 270);
+      x.fillStyle = 'rgba(0,0,0,.4)'; x.beginPath(); x.arc(256, 130, 40, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.moveTo(243, 110); x.lineTo(278, 130); x.lineTo(243, 150); x.fill();
+      sc.material.map.needsUpdate = true; v.removeAttribute('src'); v.load();
+    }, { once: true });
+  });
+  return g;
+}
+function buildReader(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'doc', title: '文档' }, wood = M('#4a3427', .6);
+  mesh(CY(.26, .3, .05, 20), wood, 0, .025, 0, g);
+  mesh(CY(.05, .06, .95, 12), wood, 0, .5, 0, g);
+  const top = new THREE.Group(); top.position.set(0, 1.02, 0); top.rotation.x = -.42; g.add(top);
+  mesh(BG(.74, .04, .52), wood, 0, 0, 0, top);
+  const pdf = e.kind === 'pdf';
+  [-1, 1].forEach(s => {
+    const c = s < 0 ? artCover(e, 256, 352, { paper: true, tag: pdf ? 'PDF' : '文档' }) : artCover({ kind: e.kind, title: e.desc || '' }, 256, 352, { paper: true, lines: 10, tag: ' ' });
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(.34, .47), new THREE.MeshStandardMaterial({ map: texOf(c), roughness: .9 }));
+    p.rotation.x = -Math.PI / 2; p.rotation.y = s * .06; p.position.set(s * .175, .032, 0); top.add(p);
+  });
+  mesh(BG(.02, .03, .48), M(pdf ? '#e04646' : '#8a5a2b', .5), 0, .03, 0, top);
+  return g;
+}
+function buildPhono(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'audio', title: '音乐' }, kc = KIND_COLOR.audio;
+  mesh(rboxGeo(.8, .62, .6, .03), M('#5a3a24', .55), 0, .31, 0, g);
+  mesh(BG(.7, .03, .52), M('#1a1a20', .4, .4), 0, .635, 0, g);
+  const disc = mesh(CY(.22, .22, .012, 40), M('#0b0b0f', .25, .2), -.08, .66, 0, g);
+  const lc = mkCanvas(64, 64), lx = lc.getContext('2d'); lx.fillStyle = (e.color || kc[0]); lx.fillRect(0, 0, 64, 64); lx.fillStyle = '#fff'; lx.fillRect(30, 4, 4, 24);
+  const label = new THREE.Mesh(new THREE.CircleGeometry(.08, 24), new THREE.MeshBasicMaterial({ map: texOf(lc) })); label.rotation.x = -Math.PI / 2; label.position.y = .007; disc.add(label);
+  const arm = mesh(BG(.02, .02, .3), M('#c8c8d0', .3, .8), .2, .69, .02, g); arm.rotation.y = .5;
+  disc.onBeforeRender = () => { if (S.artPlaying === def.uid) disc.rotation.y -= .03; };
+  const c = artCover(e, 384, 96, { tag: '音频' }), plate = screenPlane(c, .6, .15); plate.position.set(0, .4, .305); g.add(plate);
+  return g;
+}
+function buildWorkbench(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'project', title: '项目' }, top = M('#6b4a2e', .6);
+  mesh(BG(1.7, .06, .8), top, 0, .9, 0, g); legs(g, M('#2a2a30', .5, .4), 1.7, .8, .87, .06);
+  mesh(BG(1.6, .04, .7), M('#3a2a1e', .7), 0, .3, 0, g);
+  const box = new THREE.Group(); box.position.set(-.35, .93, 0); g.add(box);
+  mesh(BG(.7, .42, .5), M('#c79a4a', .7), 0, .21, 0, box);
+  const c = artCover(e, 384, 224, { tag: '项目' }), lab = screenPlane(c, .62, .36, 1); lab.position.set(0, .21, .252); box.add(lab);
+  const lap = new THREE.Group(); lap.position.set(.45, .93, .05); g.add(lap);
+  mesh(BG(.5, .02, .34), M('#202028', .4, .5), 0, .01, 0, lap);
+  const scr = mesh(BG(.5, .32, .015), M('#202028', .4, .5), 0, .17, -.17, lap); scr.rotation.x = -.25;
+  const cc = artCover({ kind: 'data', title: e.title }, 256, 160, { lines: 4, tag: 'index.html' }), sp = screenPlane(cc, .46, .28); sp.position.set(0, .17, -.16); sp.rotation.x = -.25; lap.add(sp);
+  return g;
+}
+let gltfLoaderP = null;
+function gltfLoader() {
+  return gltfLoaderP || (gltfLoaderP = new Promise((res, rej) => {
+    if (THREE.GLTFLoader) return res(new THREE.GLTFLoader());
+    const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js';
+    s.onload = () => res(new THREE.GLTFLoader()); s.onerror = () => { gltfLoaderP = null; rej(new Error('loader')); }; document.head.appendChild(s);
+  }));
+}
+function buildPedestal(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'model', title: '模型' };
+  mesh(CY(.36, .4, .9, 32), M('#e9e6ef', .5), 0, .45, 0, g);
+  mesh(CY(.41, .41, .02, 40), GLOW('#62e6ff', 1.3), 0, .91, 0, g);
+  const ph = mesh(new THREE.IcosahedronGeometry(.2, 1), new THREE.MeshBasicMaterial({ color: '#62e6ff', wireframe: true }), 0, 1.25, 0, g);
+  ph.onBeforeRender = () => { ph.rotation.y += .01; };
+  const c = artCover(e, 384, 96, { tag: '3D 模型' }), plate = screenPlane(c, .5, .125); plate.position.set(0, .7, .4); g.add(plate);
+  Promise.all([artUrl(e.art), gltfLoader()]).then(([u, loader]) => {
+    if (!u) return;
+    loader.load(u, gl => {
+      const m = gl.scene, box = new THREE.Box3().setFromObject(m), size = box.getSize(new THREE.Vector3()), k = .75 / Math.max(size.x, size.y, size.z, .001);
+      m.scale.setScalar(k); const b2 = new THREE.Box3().setFromObject(m), ctr = b2.getCenter(new THREE.Vector3());
+      m.position.set(-ctr.x, .92 - b2.min.y, -ctr.z); m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      g.remove(ph); g.add(m);
+    }, undefined, () => {});
+  }).catch(() => {});
+  return g;
+}
+function buildMonitor(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'data', title: '代码' };
+  mesh(BG(1.1, .05, .62), M('#2a2a30', .5, .3), 0, .76, 0, g); legs(g, M('#1a1a20', .4, .5), 1.1, .62, .74, .04);
+  mesh(BG(.24, .02, .16), M('#16161c', .4, .5), 0, .79, -.08, g); mesh(BG(.04, .26, .04), M('#16161c', .4, .5), 0, .92, -.1, g);
+  const head = new THREE.Group(); head.position.set(0, 1.2, -.08); g.add(head);
+  mesh(rboxGeo(.96, .58, .04, .02), M('#0d0d12', .35, .3), 0, 0, 0, head);
+  const c = mkCanvas(448, 256), x = c.getContext('2d'); x.fillStyle = '#0a0e1c'; x.fillRect(0, 0, 448, 256);
+  x.font = '600 16px ' + FONT.mono; x.fillStyle = '#ffb454'; x.fillText((e.art && e.art.name) || e.title || 'code', 14, 24);
+  const pal = ['#62e6ff', '#ff5aa8', '#7ee0a1', '#c792ea', '#e8e4f0'], r = rng(hash(def.uid));
+  for (let i = 0; i < 11; i++) { let px = 14 + (r() < .5 ? 0 : 18); for (let j = 0; j < 4; j++) { const w = 20 + r() * 60; x.fillStyle = pal[Math.floor(r() * pal.length)]; x.globalAlpha = .8; x.fillRect(px, 40 + i * 19, w, 8); px += w + 8; } }
+  x.globalAlpha = 1;
+  const sc = screenPlane(c, .9, .52); sc.position.z = .022; head.add(sc);
+  g.userData.screen = { canvas: c, tex: sc.material.map, restore() {} };
+  return g;
+}
+function buildCrate(def) {
+  const g = new THREE.Group(), e = def.entry || { kind: 'file', title: '文件' }, wood = M('#9a6b3c', .75), dark = M('#6b4a2e', .75);
+  mesh(BG(.8, .6, .7), wood, 0, .3, 0, g);
+  [.08, .52].forEach(y => mesh(BG(.82, .06, .72), dark, 0, y, 0, g));
+  [-1, 1].forEach(s => mesh(BG(.06, .62, .72), dark, s * .38, .3, 0, g));
+  const c = artCover(e, 384, 192, { tag: '文件' }), lab = screenPlane(c, .5, .25, 1); lab.position.set(0, .3, .352); g.add(lab);
+  return g;
+}
+Object.assign(ITEMS, {
+  easel: { name: '画架', w: .9, d: .8, build: buildEasel, entry: { kind: 'image', title: '新的画', desc: '', url: '' } },
+  tv: { name: '电视', w: 1.6, d: .7, build: buildTv, entry: { kind: 'video', title: '新的视频', desc: '', url: '' } },
+  reader: { name: '阅读台', w: .9, d: .8, build: buildReader, entry: { kind: 'doc', title: '新的文档', desc: '', url: '' } },
+  phono: { name: '唱片机', w: .9, d: .7, build: buildPhono, entry: { kind: 'audio', title: '新的音乐', desc: '', url: '' } },
+  workbench: { name: '工作台', w: 1.8, d: .9, build: buildWorkbench, entry: { kind: 'project', title: '新的项目', desc: '', url: '' } },
+  pedestal: { name: '展台', w: .9, d: .9, build: buildPedestal, entry: { kind: 'model', title: '新的模型', desc: '', url: '' } },
+  monitor: { name: '显示器', w: 1.2, d: .8, build: buildMonitor, entry: { kind: 'data', title: '新的代码', desc: '', url: '' } },
+  crate: { name: '储物箱', w: .9, d: .8, build: buildCrate, entry: { kind: 'file', title: '新的文件', desc: '', url: '' } }
+});
+/* ============================================================
+   AI artifacts · viewers: what opens when you click a carrier.
+   Media plays in the page; anything made of someone's text
+   (Markdown, code, projects) renders inside a sandboxed iframe,
+   never as HTML in this page.
+   ============================================================ */
+const DOC_CSS = 'body{margin:0;padding:28px 32px 48px;font:15px/1.75 -apple-system,"PingFang SC","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;color:#24221e;background:#fbf8f1;max-width:760px;margin:0 auto}h1,h2,h3,h4{line-height:1.3;margin:1.4em 0 .5em}h1{font-size:1.8em}h2{font-size:1.4em;border-bottom:1px solid #e6dfd0;padding-bottom:.3em}pre{background:#1d1f27;color:#e8e4f0;padding:14px 16px;border-radius:8px;overflow:auto;font:13px/1.6 ui-monospace,Menlo,Consolas,monospace}code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.92em;background:#efe8d8;padding:.1em .35em;border-radius:4px}pre code{background:none;padding:0}blockquote{margin:1em 0;padding:.2em 1em;border-left:4px solid #d9cdb2;color:#5b5446}img{max-width:100%}table{border-collapse:collapse;margin:1em 0;font-size:14px}th,td{border:1px solid #e0d7c3;padding:6px 10px;text-align:left}th{background:#f1ead9}a{color:#3d5afe}hr{border:0;border-top:1px solid #e0d7c3;margin:2em 0}.ln{display:inline-block;width:3.2em;color:#6c7393;user-select:none}';
+function mdInline(s) {
+  return esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g, '<img src="$2" alt="$1" loading="lazy">')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<i>$2</i>');
+}
+function mdToHtml(src) {
+  const L = String(src || '').replace(/\r\n?/g, '\n').split('\n'), out = [];
+  let i = 0, para = [];
+  const flush = () => { if (para.length) { out.push('<p>' + mdInline(para.join(' ')) + '</p>'); para = []; } };
+  while (i < L.length) {
+    const l = L[i];
+    if (/^```/.test(l)) { flush(); const buf = []; i++; while (i < L.length && !/^```/.test(L[i])) buf.push(L[i++]); i++; out.push('<pre><code>' + esc(buf.join('\n')) + '</code></pre>'); continue; }
+    let m;
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(l))) { flush(); out.push(`<h${m[1].length}>${mdInline(m[2])}</h${m[1].length}>`); i++; continue; }
+    if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(l)) { flush(); out.push('<hr>'); i++; continue; }
+    if (/^>\s?/.test(l)) { flush(); const buf = []; while (i < L.length && /^>\s?/.test(L[i])) buf.push(L[i++].replace(/^>\s?/, '')); out.push('<blockquote>' + mdToHtml(buf.join('\n')) + '</blockquote>'); continue; }
+    if (/^\s*([-*+]|\d+[.)])\s+/.test(l)) {
+      flush(); const ol = /^\s*\d/.test(l), buf = [];
+      while (i < L.length && /^\s*([-*+]|\d+[.)])\s+/.test(L[i])) buf.push('<li>' + mdInline(L[i++].replace(/^\s*([-*+]|\d+[.)])\s+(\[[ x]\]\s*)?/, '')) + '</li>');
+      out.push(`<${ol ? 'ol' : 'ul'}>${buf.join('')}</${ol ? 'ol' : 'ul'}>`); continue;
+    }
+    if (/^\|.*\|\s*$/.test(l) && /^\|?\s*:?-{2,}/.test(L[i + 1] || '')) {
+      flush(); const row = (r, tag) => '<tr>' + r.replace(/^\||\|\s*$/g, '').split('|').map(c => `<${tag}>${mdInline(c.trim())}</${tag}>`).join('') + '</tr>';
+      const buf = [row(l, 'th')]; i += 2; while (i < L.length && /^\|.*\|\s*$/.test(L[i])) buf.push(row(L[i++], 'td'));
+      out.push('<table>' + buf.join('') + '</table>'); continue;
+    }
+    if (!l.trim()) { flush(); i++; continue; }
+    para.push(l.trim()); i++;
+  }
+  flush(); return out.join('\n');
+}
+function codeHtml(text, name) {
+  const ext = extOf(name);
+  if (ext === 'json') { try { text = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {} }
+  if (ext === 'csv' || ext === 'tsv') {
+    const sep = ext === 'tsv' ? '\t' : ',', rows = text.split(/\r?\n/).filter(Boolean).slice(0, 300).map(r => r.split(sep));
+    if (rows.length > 1) return '<table>' + rows.map((r, k) => '<tr>' + r.map(c => `<${k ? 'td' : 'th'}>${esc(c.replace(/^"|"$/g, ''))}</${k ? 'td' : 'th'}>`).join('') + '</tr>').join('') + '</table>';
+  }
+  return '<pre><code>' + text.split('\n').slice(0, 5000).map((l, k) => `<span class="ln">${k + 1}</span>${esc(l)}`).join('\n') + '</code></pre>';
+}
+// 静态文档：沙箱里不允许脚本，只允许新标签页打开链接
+function staticDoc(inner, title) { return `<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title || '')}</title><style>${DOC_CSS}</style></head><body>${inner}</body></html>`; }
+function sandboxFrame(html, scripts) {
+  const f = document.createElement('iframe'); f.className = 'art-frame';
+  f.setAttribute('sandbox', scripts ? 'allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups' : 'allow-popups allow-popups-to-escape-sandbox');
+  f.setAttribute('allow', scripts ? 'fullscreen; gamepad; autoplay' : ''); f.srcdoc = html; return f;
+}
+function isMd(name, text) { return /\.(md|markdown)$/i.test(name || '') || (!extOf(name) && /^#{1,6} |\n#{1,6} |\n[-*] /.test(text || '')); }
+
+/* ---------- running a project ---------- */
+function projResolve(from, rel) {
+  if (!rel || /^([a-z][a-z0-9+.-]*:|\/\/|#)/i.test(rel)) return null;
+  const parts = rel[0] === '/' ? [] : from.split('/').slice(0, -1);
+  for (const p of rel.split(/[?#]/)[0].split('/')) { if (!p || p === '.') continue; if (p === '..') parts.pop(); else parts.push(decodeURIComponent(p)); }
+  return parts.join('/');
+}
+async function projDataUrl(proj, path, memo) {
+  if (memo.has(path)) return memo.get(path);
+  const f = proj.files.get(path); let u = null;
+  if (f && f.text != null) u = 'data:' + mimeOf(path, 'text/plain') + ';charset=utf-8,' + encodeURIComponent(f.text);
+  else if (f && f.b64) u = `data:${f.mime};base64,${f.b64}`;
+  else if (f && f.asset) { try { const b = await (await fetch(await artUrl({ asset: f.asset }))).blob(); u = await new Promise(r => { const rd = new FileReader(); rd.onload = () => r(rd.result); rd.onerror = () => r(null); rd.readAsDataURL(b); }); } catch (e) { u = null; } }
+  memo.set(path, u); return u;
+}
+async function projCss(proj, path, css, memo) {
+  const urls = [...new Set([...css.matchAll(/url\(\s*['"]?([^'")]+)['"]?\s*\)/g)].map(m => m[1]))];
+  for (const u of urls) { const p = projResolve(path, u); const d = p && await projDataUrl(proj, p, memo); if (d) css = css.split(u).join(d); }
+  return css;
+}
+async function projModule(proj, path, memo, seen) {
+  const key = 'm:' + path; if (memo.has(key)) return memo.get(key);
+  const f = proj.files.get(path); if (!f || f.text == null) return null;
+  seen.add(path); let src = f.text;
+  const specs = [...new Set([...src.matchAll(/(?:import|export)\s[^'"]*?from\s*['"]([^'"]+)['"]|import\s*\(?\s*['"]([^'"]+)['"]/g)].map(m => m[1] || m[2]))];
+  for (const s of specs) {
+    const p = projResolve(path, s); if (!p || !/^\.{0,2}\//.test(s)) continue;
+    const d = seen.has(p) ? null : await projModule(proj, p, memo, seen);
+    if (d) src = src.split(`'${s}'`).join(`'${d}'`).split(`"${s}"`).join(`"${d}"`);
+  }
+  const u = 'data:text/javascript;charset=utf-8,' + encodeURIComponent(src); memo.set(key, u); return u;
+}
+async function projPage(proj, path) {
+  const f = proj.files.get(path); if (!f || f.text == null) return null;
+  const memo = new Map(), noScript = s => s.replace(/<\/script/gi, '<\\/script');
+  let html = f.text;
+  for (const m of [...html.matchAll(/<script\b([^>]*?)\ssrc=["']([^"']+)["']([^>]*)>\s*<\/script>/gi)]) {
+    const p = projResolve(path, m[2]); if (!p || !proj.files.has(p)) continue;
+    const mod = /type=["']module["']/i.test(m[1] + m[3]);
+    const body = mod ? `import '${await projModule(proj, p, memo, new Set())}';` : noScript(proj.files.get(p).text || '');
+    html = html.split(m[0]).join(`<script${mod ? ' type="module"' : ''}>${body}</script>`);
+  }
+  for (const m of [...html.matchAll(/<script\b[^>]*type=["']module["'][^>]*>([\s\S]*?)<\/script>/gi)]) {
+    if (!/\bfrom\s*['"]\.|import\s*\(?\s*['"]\./.test(m[1])) continue;
+    proj.files.set(path + '#inline', { text: m[1] });
+    const u = await projModule(proj, path + '#inline', memo, new Set()); proj.files.delete(path + '#inline');
+    html = html.split(m[0]).join(`<script type="module">import '${u}';</script>`);
+  }
+  for (const m of [...html.matchAll(/<link\b[^>]*rel=["']stylesheet["'][^>]*>/gi)]) {
+    const h = /href=["']([^"']+)["']/i.exec(m[0]), p = h && projResolve(path, h[1]);
+    if (p && proj.files.has(p)) html = html.split(m[0]).join(`<style>${(await projCss(proj, p, proj.files.get(p).text || '', memo)).replace(/<\/style/gi, '<\\/style')}</style>`);
+  }
+  for (const m of [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]) html = html.split(m[1]).join(await projCss(proj, path, m[1], memo));
+  for (const m of [...html.matchAll(/\s(src|href|poster)=["']([^"']+)["']/gi)]) {
+    const p = projResolve(path, m[2]); if (!p || /\.html?$/i.test(p) || !proj.files.has(p)) continue;
+    const d = await projDataUrl(proj, p, memo); if (d) html = html.split(m[0]).join(` ${m[1]}="${d}"`);
+  }
+  const texts = {}; proj.files.forEach((v, k) => { if (v.text != null && !/\.html?$/i.test(k) && v.text.length < 200000) texts[k] = v.text; });
+  const shim = `<script>(function(){var F=${noScript(JSON.stringify(texts))},C=${JSON.stringify(path)};function R(s){if(!s||/^([a-z][a-z0-9+.-]*:|\\/\\/|#)/i.test(s))return null;var a=s[0]==='/'?[]:C.split('/').slice(0,-1);s.split(/[?#]/)[0].split('/').forEach(function(p){if(!p||p==='.')return;if(p==='..')a.pop();else a.push(decodeURIComponent(p));});return a.join('/');}
+var of=window.fetch;window.fetch=function(u,o){var p=R(typeof u==='string'?u:(u&&u.url)||'');if(p!=null&&F[p]!=null)return Promise.resolve(new Response(F[p],{headers:{'content-type':'text/plain;charset=utf-8'}}));return of.apply(this,arguments);};
+document.addEventListener('click',function(e){var a=e.target.closest&&e.target.closest('a[href]');if(!a)return;var p=R(a.getAttribute('href'));if(p&&/\\.html?$/i.test(p)){e.preventDefault();parent.postMessage({gebiArt:1,nav:p},'*');}},true);})();</script>`;
+  return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, h => h + shim) : shim + html;
+}
+
+/* ---------- rendering an artifact into an element ---------- */
+async function artDownload(e) {
+  const art = e.art, u = await artUrl(art), name = art.name || (e.title || 'file');
+  if (!u) return toast('文件没找到');
+  try {
+    const dl = CLOUD.ready && window.claude && window.claude.use ? await window.claude.use('downloads') : null;
+    if (dl) { const b = await (await fetch(u)).blob(); await dl.save({ filename: name, data: b }); return; }
+  } catch (x) { if (x && x.code === 'declined') return; }
+  const a = document.createElement('a'); a.href = u; a.download = name; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+}
+function artInfo(e) {
+  const a = e.art || {}; return [ART_TYPES[a.t] && ART_TYPES[a.t].label, a.bytes ? mb(a.bytes) : '', a.made ? '用 ' + a.made + ' 做的' : ''].filter(Boolean).join(' · ');
+}
+async function renderArt(box, e, opts = {}) {
+  const a = e.art; box.innerHTML = '<div class="art-wait"><div class="bar-anim"><i></i></div></div>';
+  const fail = msg => { box.innerHTML = `<div class="empty"><b>打不开</b><p>${esc(msg)}</p></div>`; };
+  const u = ['image', 'video', 'audio', 'pdf', 'model', 'file'].includes(a.t) ? await artUrl(a) : '';
+  if (a.t === 'image') { box.innerHTML = `<div class="art-stage"><img class="art-img" alt="${esc(e.title || '')}" src="${esc(u)}"></div>`; const im = box.querySelector('img'); im.onerror = () => fail('图片没有加载出来。参与者上传的文件只对同一组织的成员可见。'); im.addEventListener('click', () => box.firstElementChild.classList.toggle('full')); return; }
+  if (a.t === 'video') { box.innerHTML = `<div class="art-stage"><video class="art-video" controls playsinline preload="metadata" src="${esc(u)}"></video></div>`; return; }
+  if (a.t === 'audio') {
+    box.innerHTML = `<div class="art-audio"><div class="art-disc"></div><b>${esc(e.title || '音乐')}</b><p class="mute">${esc(e.desc || '')}</p><audio controls preload="metadata" src="${esc(u)}"></audio></div>`;
+    const au = box.querySelector('audio'); au.addEventListener('play', () => { S.artPlaying = opts.uid || null; box.classList.add('playing'); }); au.addEventListener('pause', () => { S.artPlaying = null; box.classList.remove('playing'); }); return;
+  }
+  if (a.t === 'pdf') { box.innerHTML = `<object class="art-pdf" type="application/pdf" data="${esc(u)}"><div class="empty"><b>这里显示不了 PDF</b><p><a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">在新标签页打开 ${ICON.ext}</a></p></div></object>`; return; }
+  if (a.t === 'model' || a.t === 'file') {
+    box.innerHTML = `<div class="empty"><b>${esc(a.name || e.title || '文件')}</b><p>${esc(artInfo(e))}</p><p>${a.t === 'model' ? '模型摆在房间的展台上，走近就能看到。' : '这个文件可以下载到自己的设备上打开。'}</p><p class="u-row u-center"><button type="button" class="btn sm" data-x="dl">下载</button>${a.t === 'model' && opts.g ? '<button type="button" class="btn sm ghost" data-x="look">走近看看</button>' : ''}</p></div>`;
+    box.querySelector('[data-x="dl"]').addEventListener('click', () => artDownload(e));
+    const lk = box.querySelector('[data-x="look"]'); if (lk) lk.addEventListener('click', () => { if (S.win) minimizeWin(S.win, true); focusOn(opts.g, { loose: true }); });
+    return;
+  }
+  if (a.t === 'doc' || a.t === 'data') {
+    const text = await loadArtText(a); if (text == null) return fail('文件没找到，可能已经被移除了。');
+    const inner = a.t === 'doc' && isMd(a.name, text) ? mdToHtml(text) : a.t === 'doc' ? `<pre class="plain">${esc(text)}</pre>` : codeHtml(text, a.name);
+    box.innerHTML = ''; box.appendChild(sandboxFrame(staticDoc(inner, e.title))); return;
+  }
+  if (a.t === 'project') return renderProject(box, e, opts);
+  fail('不认识这种作品。');
+}
+async function renderProject(box, e, opts) {
+  const proj = await loadProject(e.art.work);
+  if (!proj) { box.innerHTML = '<div class="empty"><b>项目没找到</b><p>可能已经被房主移除了。</p></div>'; return; }
+  const paths = [...proj.files.keys()].sort((x, y) => (x.split('/').length - y.split('/').length) || x.localeCompare(y));
+  box.innerHTML = `<div class="art-proj"><div class="art-proj-bar">${proj.entry ? '<button type="button" class="btn sm primary" data-x="run">▶ 运行</button>' : ''}<span class="mute small">${paths.length} 个文件 · ${esc(mb(proj.bytes))}${proj.skipped.length ? ` · 跳过了 ${proj.skipped.length} 个` : ''}</span></div>
+    <div class="art-proj-main"><nav class="art-tree" aria-label="项目文件">${paths.map(p => { const i = p.lastIndexOf('/') + 1; return `<button type="button" data-p="${esc(p)}"><span class="mute">${esc(p.slice(0, i))}</span>${esc(p.slice(i))}</button>`; }).join('')}</nav><div class="art-pane"></div></div></div>`;
+  const pane = box.querySelector('.art-pane'), tree = box.querySelector('.art-tree');
+  const mark = p => tree.querySelectorAll('button').forEach(b => b.setAttribute('aria-current', b.dataset.p === p));
+  const show = async p => {
+    mark(p); const f = proj.files.get(p); pane.innerHTML = '';
+    if (f.text != null) pane.appendChild(sandboxFrame(staticDoc(isMd(p, f.text) ? mdToHtml(f.text) : codeHtml(f.text, p), p)));
+    else if (/^image\//.test(f.mime)) { const d = await projDataUrl(proj, p, new Map()); pane.innerHTML = d ? `<div class="art-stage"><img class="art-img" alt="${esc(p)}" src="${esc(d)}"></div>` : '<div class="empty"><p>图片没有加载出来</p></div>'; }
+    else pane.innerHTML = `<div class="empty"><b>${esc(p)}</b><p>${esc(f.mime)} · ${esc(mb(f.size))}</p></div>`;
+  };
+  const run = async page => {
+    mark(''); pane.innerHTML = '<div class="art-wait"><div class="bar-anim"><i></i></div></div>';
+    const html = await projPage(proj, page || proj.entry);
+    pane.innerHTML = ''; if (!html) { pane.innerHTML = '<div class="empty"><p>入口页面没找到</p></div>'; return; }
+    const f = sandboxFrame(html, true); pane.appendChild(f);
+    const onMsg = ev => { if (ev.source === f.contentWindow && ev.data && ev.data.gebiArt === 1 && typeof ev.data.nav === 'string' && proj.files.has(ev.data.nav)) run(ev.data.nav); };
+    window.addEventListener('message', onMsg);
+    const stop = new MutationObserver(() => { if (!f.isConnected) { window.removeEventListener('message', onMsg); stop.disconnect(); } }); stop.observe(pane, { childList: true });
+  };
+  tree.addEventListener('click', ev => { const b = ev.target.closest('[data-p]'); if (b) show(b.dataset.p); });
+  const rb = box.querySelector('[data-x="run"]'); if (rb) rb.addEventListener('click', () => run());
+  if (proj.readme) show(proj.readme); else if (proj.entry && opts.autorun !== false) run(); else if (paths[0]) show(paths[0]);
+}
+
+/* ---------- window for an artifact ---------- */
+function createArtWin(g, e) {
+  const iid = g.userData.iid, kc = KIND_COLOR[e.kind] || KIND_COLOR.file, a = e.art;
+  const size = ['audio', 'model', 'file'].includes(a.t) ? 'tall' : 'wide';
+  const el = document.createElement('section');
+  el.className = 'win ' + size; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', e.title || '作品');
+  el.innerHTML = `<header class="win-bar"><i class="win-dot" style="background:linear-gradient(135deg,${kc[0]},${kc[1]})"></i>
+    <div class="win-t"><b>${esc(e.title || '作品')}</b><span class="win-sub"><span class="win-host">${esc(artInfo(e) || '隔壁托管')}${e.from ? ` · ${e.from.adapted ? '改编自' : '收藏自'} ${esc(e.from.by || '邻居')}` : ''}</span></span></div>
+    <div class="win-act">${curateOK(e) ? '<button type="button" class="win-get" data-a="collect">☆ 收藏</button>' : ''}
+    ${['image', 'video', 'audio', 'pdf', 'model', 'file', 'doc', 'data'].includes(a.t) ? '<button type="button" class="win-get" data-a="dl">下载</button>' : ''}
+    <button type="button" class="wbtn" data-a="min" aria-label="收起到任务栏">${WICON.min}</button>
+    <button type="button" class="wbtn x" data-a="close" aria-label="关闭">${WICON.x}</button></div></header>
+    <div class="win-body"><div class="art-view"></div></div>`;
+  const w = { iid, g, e, el, iframe: null, size, src: { art: true }, origin: '*', kind: e.kind, sdk: true, loaded: true, timers: [], art: true };
+  el.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-a]'); if (!b) return;
+    const act = b.dataset.a;
+    if (act === 'min') minimizeWin(w); else if (act === 'close') closeWin(w);
+    else if (act === 'collect') collectEntry(e); else if (act === 'dl') artDownload(e);
+  });
+  w.onClose = () => { if (S.artPlaying === g.userData.def.uid) S.artPlaying = null; };
+  renderArt(el.querySelector('.art-view'), e, { g, uid: g.userData.def.uid });
+  winsEl.appendChild(el);
+  return w;
+}
+/* ============================================================
+   AI artifacts · publish desk: everything that arrives (a dropped
+   file, pasted text, a publish link, a .gebi package) becomes a
+   card; Bit can fill in the details; one click stores it and puts
+   the right object in the room. Protocol: docs/PUBLISH.md
+   ============================================================ */
+const PUB = { items: [], busy: false };
+const PUB_TOOL_URL = 'https://raw.githubusercontent.com/ciki-9876/gebi/main/tools/gebi-publish.mjs';
+const textBytes = s => new Blob([s]).size;
+
+/* ---------- intake ---------- */
+function pubItem(o) {
+  const t = ART_TYPES[o.type] ? o.type : 'file';
+  return Object.assign({ id: rid('p'), made: '', desc: '' }, o, { type: t, carrier: artCarrier(t, o.carrier), title: String(o.title || baseName(o.name) || ART_TYPES[t].label).slice(0, 30) });
+}
+async function fileItems(f) {
+  const name = f.name || 'file', low = name.toLowerCase();
+  if (low.endsWith('.gebi.json') || (low.endsWith('.json') && f.size < 30 * 1024 * 1024 && /^\s*\{\s*"gebi"/.test(await f.slice(0, 64).text()))) {
+    let m; try { m = JSON.parse(await f.text()); } catch (e) { throw artErr(`${name} 不是有效的发布清单。`); }
+    return manifestItems(m);
+  }
+  if (/\.zip$/.test(low) || /zip/.test(f.type)) {
+    const files = await readZip(await f.arrayBuffer());
+    const mf = files.find(x => x.path === 'gebi.json');
+    if (mf) { let m = {}; try { m = JSON.parse(new TextDecoder().decode(mf.bytes)); } catch (e) {} return manifestItems(m, files.filter(x => x !== mf)); }
+    return [pubItem({ type: 'project', name, files, size: f.size, title: baseName(name) })];
+  }
+  const type = typeOfName(name, f.type);
+  if ((type === 'web' || type === 'doc' || type === 'data') && f.size <= 4 * 1024 * 1024) {
+    const text = await f.text(), t = type === 'web' ? sniffText(text) === 'game' ? 'game' : 'web' : type;
+    return [pubItem({ type: t, name, text, size: f.size, mime: mimeOf(name, f.type), title: (t !== 'data' && titleFromText(text, t)) || baseName(name) })];
+  }
+  return [pubItem({ type, name, blob: f, size: f.size, mime: mimeOf(name, f.type) })];
+}
+async function textItems(raw) {
+  const text = String(raw || '').trim(); if (!text) return [];
+  if (/^\{\s*"gebi"/.test(text)) { let m = null; try { m = JSON.parse(text); } catch (e) {} if (m) return manifestItems(m); }
+  if (/^https?:\/\/\S+$/.test(text)) return [urlItem(text)];
+  const t = sniffText(text), name = { web: 'index.html', game: 'index.html', doc: 'note.md', data: 'snippet.txt' }[t];
+  return [pubItem({ type: t, name, text, size: textBytes(text), mime: mimeOf(name), title: titleFromText(text, t) })];
+}
+function urlItem(url, o = {}) {
+  let path = ''; try { path = new URL(url).pathname; } catch (e) {}
+  const guess = typeOfName(path), t = o.type && ART_TYPES[o.type] ? o.type : ['image', 'video', 'audio', 'pdf', 'model'].includes(guess) ? guess : 'web';
+  return pubItem(Object.assign({ name: path.split('/').pop() || url, url, size: 0, mime: mimeOf(path) }, o, { type: t }));
+}
+async function manifestItems(m, zipFiles) {
+  if (!m || typeof m !== 'object') throw artErr('发布清单格式不对，见 docs/PUBLISH.md。');
+  const base = { title: String(m.title || '').slice(0, 30), desc: String(m.desc || '').slice(0, 80), made: String(m.made_with || '').slice(0, 30), carrier: m.carrier };
+  const want = ART_TYPES[m.type] ? m.type : '';
+  if (validUrl(m.url)) return [urlItem(String(m.url).trim(), Object.assign({}, base, { type: want }))];
+  let files = zipFiles || [];
+  if (!zipFiles && Array.isArray(m.files)) files = m.files.slice(0, 400).filter(f => f && typeof f.path === 'string').map(f => {
+    const path = f.path.replace(/^\.?\/+/, '').replace(/\\/g, '/');
+    if (typeof f.text === 'string') return { path, text: f.text };
+    if (typeof f.base64 === 'string') { try { return { path, bytes: b64ToBytes(f.base64.replace(/\s+/g, '')), mime: f.mime }; } catch (e) {} }
+    return null;
+  }).filter(Boolean);
+  if (!files.length) throw artErr('发布清单里没有文件，也没有网址。');
+  if (files.length === 1 && files[0].bytes && /\.zip$/i.test(files[0].path)) {
+    const inner = await readZip(files[0].bytes.slice().buffer), mf = inner.find(x => x.path === 'gebi.json');
+    if (mf) { let im = {}; try { im = JSON.parse(new TextDecoder().decode(mf.bytes)); } catch (e) {} return manifestItems(Object.assign({}, im, Object.fromEntries(Object.entries(m).filter(([k, v]) => v && k !== 'files'))), inner.filter(x => x !== mf)); }
+    return manifestItems(Object.assign({}, m, { type: 'project', files: undefined }), inner);
+  }
+  if (files.length === 1 && want !== 'project') {
+    const f = files[0], type = want || typeOfName(f.path, f.mime);
+    if (f.text == null && isTextName(f.path)) { try { f.text = new TextDecoder('utf-8', { fatal: true }).decode(f.bytes); } catch (e) {} }
+    if (f.text != null) { const t = type === 'web' && sniffText(f.text) === 'game' ? 'game' : type; return [pubItem(Object.assign({ type: t, name: f.path, text: f.text, size: textBytes(f.text), mime: mimeOf(f.path) }, base, { title: base.title || titleFromText(f.text, t) || baseName(f.path) }))]; }
+    return [pubItem(Object.assign({ type, name: f.path, blob: new Blob([f.bytes], { type: f.mime || mimeOf(f.path) }), size: f.bytes.length, mime: f.mime || mimeOf(f.path) }, base))];
+  }
+  const size = files.reduce((s, f) => s + (f.text != null ? textBytes(f.text) : f.bytes.length), 0);
+  return [pubItem(Object.assign({ type: 'project', name: (base.title || 'project') + '.zip', files, size, entry: String(m.entry || '') }, base))];
+}
+async function linkManifest(code) {
+  const m = /^([zj])\.([A-Za-z0-9_-]+)$/.exec(code || '');
+  if (!m) throw artErr('发布链接不完整，可能被截断了。让 AI 重新生成一次。');
+  const bytes = b64ToBytes(m[2].replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((m[2].length + 3) % 4));
+  let json;
+  if (m[1] === 'z') {
+    if (typeof DecompressionStream === 'undefined') throw artErr('这个浏览器打不开压缩的发布链接，请用最新版的 Chrome、Edge 或 Safari。');
+    json = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();
+  } else json = new TextDecoder().decode(bytes);
+  return JSON.parse(json);
+}
+
+/* ---------- the desk ---------- */
+function aiGuide() {
+  return `请帮我把作品发布到「隔壁」（一个把作品摆进 3D 房间的社区）。按下面的顺序选一种做法：
+
+1. 如果你能调用 MCP 工具 gebi_publish_files 或 gebi_publish_content，直接调用，然后把返回的发布链接或 .gebi.zip 文件交给我。
+2. 如果你能运行命令：下载 ${PUB_TOOL_URL}
+   运行 node gebi-publish.mjs <文件或文件夹> --title "作品名" --made-with "<你的名字>"
+   把输出的发布链接或 .gebi.zip 文件交给我。
+3. 都不能的话：把作品整理成一个 .gebi.json 文件给我，内容是：
+   {"gebi":1,"title":"作品名（30 字内）","desc":"一句话介绍（80 字内）","type":"web|game|doc|image|video|audio|pdf|project|model|data|file","made_with":"<你的名字>","files":[{"path":"index.html","text":"文件内容"}]}
+   - 文本文件写在 text 里；图片等二进制文件写成 {"path":"a.png","base64":"…","mime":"image/png"}。
+   - 有多个文件时会作为项目运行，入口是 index.html，可以用相对路径引用其他文件。
+   - 作品已经在网上的话，用 "url":"https://…" 代替 files。
+
+限制：单个文件不超过 20 MB；单个网页、文档、代码不超过 200 KB；项目里的代码和文本合计不超过 1 MB；不支持需要服务器的后端。
+拿到链接我会直接打开；拿到文件我会拖进隔壁的发布台。`;
+}
+function mcpConfig() { return `{\n  "mcpServers": {\n    "gebi": { "command": "node", "args": ["<保存位置>/gebi-publish.mjs"] }\n  }\n}`; }
+async function openPublish(seed) {
+  if (!seed && PUB.pending) { seed = PUB.pending; PUB.pending = null; }
+  if (!(S.view === 'room' && S.room && S.room.mine)) { if (!(await pubGoHome())) { if (seed) PUB.pending = seed; return; } }
+  if (CLOUD.ready && !canPost()) { toast('你现在只能参观：发布作品需要房主把你设为“参与者”', 4200); return; }
+  if (S.win) minimizeWin(S.win, true);
+  if (S.panel && S.panel.kind !== 'publish') closePanel(true);
+  S.panel = { kind: 'publish' };
+  if (seed) await pubAdd(seed); else renderPublish();
+}
+async function pubGoHome() {
+  if (window.claude && window.claude.use) for (let i = 0; i < 30 && !CLOUD.ready; i++) await sleep(200);
+  const r = CLOUD.ready ? myResident() : RESIDENTS.find(x => x.preset === 'mine');
+  if (!r) { toast('先在地球上选址入住，入住后再发布作品', 4600); return false; }
+  for (let i = 0; i < 40 && S.busy; i++) await sleep(150);
+  if (S.view === 'room') await exitToGlobe();
+  await diveInto(r);
+  for (let i = 0; i < 60 && (S.busy || S.view !== 'room'); i++) await sleep(150);
+  return S.view === 'room' && S.room && S.room.mine;
+}
+async function pubAdd(seed) {
+  const errs = [];
+  const add = list => { PUB.items.push(...list); };
+  try {
+    if (seed.files) for (const f of [...seed.files].slice(0, 20)) { try { add(await fileItems(f)); } catch (e) { errs.push(e.friendly ? e.message : `${f.name} 读不出来`); } }
+    if (seed.text) add(await textItems(seed.text));
+    if (seed.manifest) add(await manifestItems(seed.manifest));
+  } catch (e) { errs.push(e.friendly ? e.message : '没能识别这些内容'); }
+  renderPublish(errs);
+}
+function pubWarn(it) {
+  if (it.url) return '';
+  const st = ART_TYPES[it.type].store;
+  if (st === 'work' && it.size > WORK_MAX) return `网页有 ${kb(it.size)}，超过了 200 KB。把图片换成链接，或者打包成 .zip 当作项目发布。`;
+  if (st === 'project' && !it.files) return '只有项目包（.zip）或多个文件才能作为项目发布。';
+  if ((st === 'work' || st === 'text') && it.text == null) return '这个文件不是文本，换一种类型试试。';
+  if (st === 'asset' && !it.blob && it.text == null) return '这个文件是空的。';
+  if (it.size > ART_ASSET_MAX) return `文件有 ${mb(it.size)}，超过了 20 MB。压缩一下，或者放到网上后用网址发布。`;
+  if ((it.type === 'model' || it.type === 'file') && it.blob && !assetType(it.name, it.mime) && it.size > DB_BLOB_MAX) return `这种文件只能存 2 MB 以内。放到网上后用网址发布。`;
+  if (S.room.items.length + PUB.items.length > 80) return '房间里的物件快放满了（最多 80 件），先删掉一些。';
+  return '';
+}
+function typeChoices(it) {
+  if (it.url) return [it.type];
+  if (it.files) return ['project'];
+  if (it.text != null) return ['web', 'game', 'doc', 'data'];
+  return [it.type, 'file'].filter((v, i, a) => a.indexOf(v) === i);
+}
+function renderPublish(errs = []) {
+  if (!S.panel || S.panel.kind !== 'publish') return;
+  const n = PUB.items.length;
+  const cards = PUB.items.map((it, i) => {
+    const warn = pubWarn(it), types = typeChoices(it);
+    return `<div class="pub-card" data-i="${i}">
+      <div class="pub-head"><span class="tag">${esc(ART_TYPES[it.type].label)}</span><b>${esc(it.name || it.url || '')}</b><small class="mute">${it.size ? esc(mb(it.size)) : it.url ? '网址' : ''}</small><button type="button" class="icon-btn" data-x="rm" aria-label="移除">${ICON.del}</button></div>
+      ${types.length > 1 ? `<div class="field"><label>类型</label><div class="seg" data-f="type">${types.map(t => `<button type="button" data-v="${t}" aria-pressed="${t === it.type}">${esc(ART_TYPES[t].label)}</button>`).join('')}</div></div>` : ''}
+      <div class="field"><label>放进</label><div class="seg" data-f="carrier">${ART_TYPES[it.type].carriers.map(c => `<button type="button" data-v="${c}" aria-pressed="${c === it.carrier}">${esc(carrierName(c))}</button>`).join('')}</div></div>
+      <div class="field"><label for="pt${i}">作品名称</label><input class="input" id="pt${i}" data-f="title" maxlength="30" value="${esc(it.title)}"></div>
+      <div class="field"><label for="pd${i}">一句话介绍</label><input class="input" id="pd${i}" data-f="desc" maxlength="80" value="${esc(it.desc)}" placeholder="可以留空，或者让 Bit 来写"></div>
+      ${it.made ? `<p class="mute small">用 ${esc(it.made)} 做的</p>` : ''}${warn ? `<p class="err">${esc(warn)}</p>` : ''}<p class="pub-state mute small" data-s></p>
+    </div>`;
+  }).join('');
+  setPanel('发布台 · 任何 AI 做的东西', n ? `准备发布 ${n} 件` : '发布作品', `
+    ${errs.map(e => `<p class="err u-mb3">${esc(e)}</p>`).join('')}
+    ${cards}
+    <div class="pub-drop" id="pubDrop" tabindex="0"><b>${n ? '再加一些' : '把 AI 做的东西拖到这里'}</b><span>网页、文档、图片、视频、音频、PDF、3D 模型、整个项目的 .zip，或者 AI 给你的 .gebi 发布包</span>
+      <span class="u-row u-center"><label class="btn sm" for="pubFile">选择文件</label><input type="file" id="pubFile" multiple hidden></span></div>
+    <div class="field"><label for="pubPaste">或者粘贴 AI 的回复</label><textarea class="input code" id="pubPaste" rows="4" placeholder="网页代码、Markdown 文章、代码、作品网址，或者发布清单"></textarea>
+      <button type="button" class="btn sm u-mt2" id="pubPasteGo">识别粘贴的内容</button></div>
+    <div class="divider"></div>
+    <p class="section-t">让你的 AI 直接发布</p>
+    <p class="mute small u-mb3">把发布说明发给你用的 AI（ChatGPT、Claude、Gemini、Cursor……），它会把作品打包好，交给你一个链接或文件。</p>
+    <div class="u-row"><button type="button" class="btn sm" id="pubCopyGuide">复制发布说明</button><button type="button" class="btn sm ghost" id="pubCopyMcp">复制 MCP 配置</button></div>
+    <details class="pub-more"><summary>装上隔壁发布工具（MCP）</summary><p class="mute small">下载 <a href="${PUB_TOOL_URL}" target="_blank" rel="noopener noreferrer">gebi-publish.mjs</a>（需要 Node 18 以上），把下面的配置加进 Claude Desktop、Cursor、Codex 等工具的 MCP 设置，然后对 AI 说“把这个发布到隔壁”。</p><pre class="code">${esc(mcpConfig())}</pre></details>`,
+    n ? `<button type="button" class="btn primary" id="pubGo"${PUB.busy ? ' disabled' : ''}>发布 ${n} 件到房间</button><button type="button" class="btn" id="pubBit"${PUB.busy ? ' disabled' : ''}>让 Bit 补全介绍</button>` : '');
+  pBody.querySelectorAll('.pub-card').forEach(card => {
+    const it = PUB.items[+card.dataset.i];
+    card.addEventListener('click', ev => {
+      const b = ev.target.closest('button'); if (!b || PUB.busy) return;
+      if (b.dataset.x === 'rm') { PUB.items.splice(+card.dataset.i, 1); renderPublish(); return; }
+      const seg = b.closest('[data-f]'); if (!seg) return;
+      if (seg.dataset.f === 'type') { it.type = b.dataset.v; it.carrier = artCarrier(it.type, it.carrier); renderPublish(); }
+      else { it.carrier = b.dataset.v; seg.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); }
+    });
+    card.querySelectorAll('input[data-f]').forEach(inp => inp.addEventListener('input', () => { it[inp.dataset.f] = inp.value; }));
+  });
+  const fi = $('#pubFile'); fi.addEventListener('change', () => { if (fi.files && fi.files.length) pubAdd({ files: fi.files }); });
+  const drop = $('#pubDrop');
+  drop.addEventListener('dragover', ev => { ev.preventDefault(); drop.classList.add('over'); });
+  drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+  drop.addEventListener('drop', ev => { ev.preventDefault(); ev.stopPropagation(); drop.classList.remove('over'); if (ev.dataTransfer.files.length) pubAdd({ files: ev.dataTransfer.files }); });
+  $('#pubPasteGo').addEventListener('click', () => { const v = $('#pubPaste').value; if (v.trim()) pubAdd({ text: v }); });
+  $('#pubCopyGuide').addEventListener('click', () => copyText(aiGuide(), '发布说明已复制，发给你的 AI 吧'));
+  $('#pubCopyMcp').addEventListener('click', () => copyText(mcpConfig(), 'MCP 配置已复制'));
+  const go = $('#pubGo'); if (go) go.addEventListener('click', pubCommit);
+  const bit = $('#pubBit'); if (bit) bit.addEventListener('click', pubAutofill);
+}
+async function copyText(s, ok) {
+  try { await navigator.clipboard.writeText(s); toast(ok); }
+  catch (e) { const t = document.createElement('textarea'); t.value = s; document.body.appendChild(t); t.select(); let done = false; try { done = document.execCommand('copy'); } catch (x) {} t.remove(); toast(done ? ok : '浏览器不让复制，请手动选中文字复制'); }
+}
+function cardState(i, text) { const el = pBody.querySelector(`.pub-card[data-i="${i}"] [data-s]`); if (el) el.textContent = text; }
+
+/* ---------- Bit fills in the details ---------- */
+async function pubAutofill() {
+  if (!S.sample) { toast('Bit 现在不在线：页面需要开启 AI 能力。先手动填写吧'); return; }
+  PUB.busy = true; renderPublish();
+  let lim = {}; try { lim = await S.sample.limits(); } catch (e) {}
+  for (let i = 0; i < PUB.items.length; i++) {
+    const it = PUB.items[i]; cardState(i, 'Bit 正在看……');
+    const peek = it.text != null ? it.text.slice(0, 4000) : it.files ? it.files.slice(0, 60).map(f => f.path).join('\n') + '\n\n' + ((it.files.find(f => /^readme/i.test(f.path) && f.text != null) || {}).text || '').slice(0, 2000) : '';
+    const prompt = `你是「隔壁」社区的发布助手。用户要把一件 AI 做的作品摆进自己的 3D 房间。根据下面的信息，用中文给出：
+- title：作品名，12 字以内，具体，不要“我的作品”这类空话
+- desc：一句话介绍，40 字以内，说清楚它是什么、能做什么
+- carrier：从 ${JSON.stringify(ART_TYPES[it.type].carriers)} 里选最合适的一个
+只输出 JSON，例如 {"title":"…","desc":"…","carrier":"…"}。
+
+文件名：${it.name || it.url || ''}
+类型：${ART_TYPES[it.type].label}
+现在的名称：${it.title}
+${peek ? '内容节选：\n' + peek : ''}`;
+    const opts = { modelTier: 'quick' };
+    if (it.type === 'image' && it.blob && lim.images && it.size < 5 * 1024 * 1024) opts.images = [it.blob];
+    try {
+      const r = await S.sample(prompt, opts), j = JSON.parse((/\{[\s\S]*\}/.exec(r.text || '') || ['{}'])[0]);
+      if (j.title) it.title = String(j.title).slice(0, 30);
+      if (j.desc) it.desc = String(j.desc).slice(0, 80);
+      if (j.carrier) it.carrier = artCarrier(it.type, j.carrier);
+    } catch (e) { if (e && e.code === 'not_granted') { toast('没有授权 Bit 使用 AI，先手动填写吧'); break; } if (e && e.code === 'rate_limited') { toast('Bit 有点忙，稍后再试'); break; } }
+  }
+  PUB.busy = false; renderPublish();
+}
+
+/* ---------- store + place ---------- */
+async function pubStore(it, i) {
+  const prefix = workPrefix(), path = prefix + rid('a'), t = it.type, d = ART_TYPES[t];
+  const e = { kind: d.kind, title: (it.title || '').trim() || d.label, desc: (it.desc || '').trim(), url: '' };
+  const art = { t, name: String(it.name || '').slice(0, 80), mime: it.mime || '', bytes: it.size || 0 };
+  if (it.made) art.made = it.made;
+  if (it.url) { if (d.store === 'work') { e.url = it.url; e.open = 'embed'; } else e.art = Object.assign(art, { url: it.url }); return e; }
+  if (d.store === 'work') {
+    cardState(i, '正在托管网页……'); await saveWork(path, e.title, it.text);
+    Object.assign(e, { work: path, workBytes: textBytes(it.text), open: 'embed', size: t === 'game' ? 'wide' : 'tall' }); return e;
+  }
+  if (d.store === 'text') {
+    cardState(i, '正在保存……');
+    if (it.size <= ART_DB_MAX) { await saveArtDoc(path, { title: e.title, kind: t, name: art.name, text: it.text }); art.work = path; }
+    else { const ty = /\.(md|markdown)$/i.test(art.name) ? 'text/markdown' : /\.csv$/i.test(art.name) ? 'text/csv' : /\.json$/i.test(art.name) ? 'application/json' : 'text/plain'; art.asset = await putBlob(new Blob([it.text], { type: ty }), ty); }
+    e.art = art; return e;
+  }
+  if (d.store === 'project') {
+    const r = await saveProject(path, e.title, it.files, it.entry, s => cardState(i, s));
+    Object.assign(art, { work: path, bytes: r.bytes }); e.art = art;
+    if (r.skipped.length) toast(`「${e.title}」里有 ${r.skipped.length} 个文件太大或格式不支持，已跳过`, 4200);
+    return e;
+  }
+  cardState(i, `正在上传 ${mb(it.size)}……`);
+  const ty = assetType(it.name, it.mime), blob = it.blob || new Blob([it.text || ''], { type: ty || it.mime || mimeOf(it.name) });
+  if (ty) art.asset = await putBlob(blob, ty);
+  else { await saveDbBlob(path, new Uint8Array(await blob.arrayBuffer()), it.mime); art.work = path; }
+  e.art = art; return e;
+}
+async function pubCommit() {
+  if (PUB.busy || !PUB.items.length) return;
+  if (!(S.room && S.room.mine)) { toast('回到自己的房间再发布'); return; }
+  const bad = PUB.items.findIndex(it => pubWarn(it));
+  if (bad >= 0) { toast(`第 ${bad + 1} 件还有问题：${pubWarn(PUB.items[bad])}`, 4600); return; }
+  PUB.busy = true; renderPublish();
+  const done = [], ok = new Set();
+  for (let i = 0; i < PUB.items.length; i++) {
+    const it = PUB.items[i];
+    try {
+      const e = await pubStore(it, i), sp = freeSpot(S.room.items);
+      const def = { uid: it.carrier + Date.now().toString(36) + i, type: it.carrier, x: sp.x, z: sp.z, rot: 0, entry: e };
+      clampDef(def); S.room.items.push(def); done.push(placeItem(def)); ok.add(it); cardState(i, '已摆进房间');
+    } catch (err) { cardState(i, err && err.friendly ? err.message : '没发布成功，稍后再试'); console.warn('publish', err); }
+  }
+  PUB.busy = false;
+  if (!done.length) { renderPublish(); return; }
+  saveLayout(); rebuildColliders(); refreshHotspots();
+  const left = PUB.items.length - done.length;
+  PUB.items = PUB.items.filter(it => !ok.has(it));
+  if (left) { renderPublish([`${left} 件没有发布成功，原因写在卡片里。`]); toast(`摆好了 ${done.length} 件`); return; }
+  closePanel(true); toast(`摆好了 ${done.length} 件，点它们就能打开`, 3600);
+  setTimeout(() => { const g = done[done.length - 1]; if (g) focusOn(g, { loose: true }); }, 200);
+}
+
+/* ---------- ways in ---------- */
+$('#pubBtn').addEventListener('click', () => openPublish());
+$('#pubBuildBtn').addEventListener('click', () => openPublish());
+addEventListener('dragover', ev => { if (ev.dataTransfer && [...ev.dataTransfer.types].includes('Files')) ev.preventDefault(); });
+addEventListener('drop', ev => {
+  if (!ev.dataTransfer || !ev.dataTransfer.files.length) return;
+  ev.preventDefault();
+  if (S.view === 'room' && S.room && S.room.mine) openPublish({ files: ev.dataTransfer.files });
+  else toast('回到自己的房间，再把作品拖进来');
+});
+async function pubFromHash() {
+  const m = /^#publish=([^&]+)/.exec(location.hash || ''); if (!m) return;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  let manifest;
+  try { manifest = await linkManifest(m[1]); } catch (e) { toast(e.friendly ? e.message : '发布链接打不开，让 AI 重新生成一次', 5000); return; }
+  toast('收到一件要发布的作品，正在带你回自己的房间', 3000);
+  openPublish({ manifest });
+}
+/* ============================================================
    Input
    ============================================================ */
 const raycaster = new THREE.Raycaster();
@@ -4738,6 +5701,7 @@ async function boot() {
     const r = residentOfKey(deep[1]) || RESIDENTS.find(x => x.no === deep[1]);
     if (r) { S.via = VIA[deep[2]] ? deep[2] : 'link'; diveInto(r); } else toast('这个房间链接找不到了，可能房主搬走了');
   }
+  pubFromHash();
   try {
     if (window.claude && window.claude.use) {
       const s = await window.claude.use('sample');
