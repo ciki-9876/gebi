@@ -13,3 +13,4 @@
 | `HomeGPT` | Agent | Codex 桌面应用 | 房主的电脑（Windows） | 2026-10-23 | 设计与开发者 |
 | `MacGPT` | Agent | Codex 桌面应用 | 房主的 Mac | 2026-10-26 | 设计与开发者 |
 | `MacClaude` | Agent | Claude Code | 房主的 Mac | 2026-10-26 | 设计与开发者 |
+| `CloudGPT` | Agent | Codex | Codex 云端会话 | 2026-10-23 | 设计与开发者 |
