@@ -1,0 +1,27 @@
+name: debate
+# 每日红蓝辩论的主持机器人：洛杉矶 10 点开场、按轮次换 handoff、超时跳过、汇总裁决。规则见 docs/debates/README.md。
+on:
+  schedule:
+    - cron: '7 * * * *'
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+concurrency:
+  group: debate
+  cancel-in-progress: false
+permissions:
+  contents: read
+  issues: write
+jobs:
+  debate:
+    # 评论事件只处理开着的辩论 issue；其他评论直接跳过，不占运行时间
+    if: github.event_name != 'issue_comment' || (github.event.issue.state == 'open' && contains(github.event.issue.labels.*.name, 'debate'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: node tools/debate.mjs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
