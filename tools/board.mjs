@@ -52,13 +52,23 @@ function checksGreen(p) {
   return ['check', 'identity', 'review'].every(n => last[n] && last[n].conclusion === 'success');
 }
 
+// 找最近一次有效活动。事件接口一页最多 100 条，最近的事件可能全是辩论或机器人的，所以往后翻页：
+// 找到有效活动、或翻到比 72 小时更早的事件、或确认没有更多数据，才能下结论；翻到页数上限还没结论就按活跃处理，不能静默判休眠
+function lastActivity() {
+  for (let page = 1; page <= 3; page++) {
+    const b = gh(`events?per_page=100&page=${page}`);
+    const hit = b.filter(e => ACTIVITY.has(e.type) && !/\[bot\]$/.test(e.actor.login)
+      && !((e.payload && e.payload.issue && e.payload.issue.labels) || []).some(l => QUIET_LABELS.includes(l.name)));
+    if (hit.length) return { last: Math.max(...hit.map(e => Date.parse(e.created_at))) };
+    if (b.length < 100 || NOW - Date.parse(b[b.length - 1].created_at) > DORMANT_AFTER) return { last: 0 };   // 没有更多数据，或已经翻过 72 小时
+  }
+  return { unknown: true };
+}
 function projectMode() {
   const paused = gh(`issues?state=open&labels=${encodeURIComponent('project:paused')}&per_page=1`).length > 0;
-  const events = gh('events?per_page=100').filter(e => ACTIVITY.has(e.type) && !/\[bot\]$/.test(e.actor.login)
-    && !((e.payload && e.payload.issue && e.payload.issue.labels) || []).some(l => QUIET_LABELS.includes(l.name)));
-  const last = events.map(e => Date.parse(e.created_at)).sort((a, b) => b - a)[0];
-  const mode = paused ? 'paused' : (!last || NOW - last > DORMANT_AFTER ? 'dormant' : 'active');
-  return { mode, last, text: { paused: '暂停（房主暂停了自动检查）', dormant: '休眠（72 小时没有活动，可降到每 6 小时检查）', active: '活跃（每 30 分钟检查）' }[mode] };
+  const { last, unknown } = lastActivity();
+  const mode = paused ? 'paused' : (unknown || (last && NOW - last <= DORMANT_AFTER) ? 'active' : 'dormant');
+  return { mode, last, unknown, text: { paused: '暂停（房主暂停了自动检查）', dormant: '休眠（72 小时没有活动，可降到每天检查一次）', active: unknown ? '活跃（最近 300 条事件里都没有有效活动，无法判断，按活跃处理）' : '活跃（每 30 分钟检查）' }[mode] };
 }
 
 function main() {

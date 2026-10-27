@@ -84,11 +84,27 @@ ok(/mode=dormant/.test(r.stdout), '辩论 issue 上的发言和标签变化不�
 r = run(base({ events: [dbg('IssueCommentEvent', 1, ['bug']), ...old] }), ['--status']);
 ok(/mode=active/.test(r.stdout), '别的 issue 上的发言照常算活动');
 
+// 最近 100 条事件全是辩论或机器人的，真实活动在第二页：不能误判休眠
+const dbgEvents = n => Array.from({ length: n }, (_, i) => dbg('IssueCommentEvent', 0.1 + i * 0.001, ['debate']));
+r = run(base({ 'events?per_page=100&page=1': dbgEvents(100), 'events?per_page=100&page=2': [ev('PushEvent', 'ciki-9876', 30)] }), ['--status']);
+ok(/mode=active/.test(r.stdout) && !/90 天内/.test(r.stdout), '第一页全是辩论事件，第二页有真实活动：判活跃，不误判休眠');
+r = run(base({ 'events?per_page=100&page=1': dbgEvents(100), 'events?per_page=100&page=2': [ev('PushEvent', 'ciki-9876', 100)] }), ['--status']);
+ok(/mode=dormant/.test(r.stdout), '第一页全是辩论事件，第二页的活动已超过 72 小时：休眠');
+r = run(base({ 'events?per_page=100&page=1': dbgEvents(100), 'events?per_page=100&page=2': dbgEvents(100), 'events?per_page=100&page=3': dbgEvents(100) }), ['--status']);
+ok(/mode=active/.test(r.stdout) && /无法判断/.test(r.stdout), '翻到页数上限还没结论：按活跃处理，不静默判休眠');
+
 // 只能定时唤醒模型的环境：下次隔多久
 const nc = d => run(d, ['--next-check']).stdout.trim();
 ok(nc(base()) === '30', '--next-check：活跃 30 分钟');
 ok(nc(base({ events: old })) === '1440', '--next-check：休眠 1440 分钟');
 ok(nc(base({ 'issues?state=open&labels=project%3Apaused': [{ number: 9 }] })) === '1440', '--next-check：暂停也是 1440（不停掉定时，只拉到最慢）');
+
+// 出错时 --next-check 不输出数字，调用方就不会误改定时
+r = run({ __fail: true }, ['--next-check']);
+ok(r.status === 20 && r.stdout.trim() === '', '--next-check 出错：退出 20，标准输出为空（不会误改定时）');
+// 活跃 → 休眠 → 活跃 的完整过程（模型定时环境每次醒来都问一次）
+const flow = [base(), base({ events: old }), base({ events: [ev('IssuesEvent', 'ciki-9876', 0.2), ...old] })].map(d => run(d, ['--next-check']).stdout.trim());
+ok(flow.join() === '30,1440,30', 'active → dormant → active：--next-check 依次是 30、1440、30');
 
 // 暂停 → 撤销标签 → 自动恢复（脚本环境：定时一直在跑，下一次就列出待办）
 const todoPR = [pr(5, 'HomeGPT', ['ready-for-review', 'handoff:PCClaude'])];
