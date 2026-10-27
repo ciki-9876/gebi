@@ -84,7 +84,8 @@ export function replay(st, comments, now) {
     if (round > 5) break;
     const name = speakerOf(c.body);
     if (!who(round).includes(name) || !String(c.body).includes(ROUNDS[round].mark)) continue;
-    if (round === 5) { if (!(name in verdicts)) verdicts[name] = parseWinner(c.body); if (st.judges.every(j => j in verdicts)) next(t, false); }
+    // 裁决要写明胜方才算；没写的不算交了，handoff 留着，等他补一条或者超时
+    if (round === 5) { const w = parseWinner(c.body); if (w && !(name in verdicts)) verdicts[name] = w; if (st.judges.every(j => j in verdicts)) next(t, false); }
     else { spoke[round] = name; next(t, false); }
   }
   while (round <= 5 && now > deadline()) next(deadline(), true);
@@ -151,8 +152,25 @@ ${t}
 
 /* ---------- 一次运行 ---------- */
 // api(method, path, body) 同 GitHub REST；now 是 Date
+export const LABELS = {
+  debate: ['d93f0b', '每日红蓝辩论'],
+  'debate-eval': ['d93f0b', '每日红蓝辩论的试行评估'],
+  'winner:red': ['b60205', '辩论结果：红方胜'], 'winner:blue': ['1d76db', '辩论结果：蓝方胜'], 'winner:draw': ['c5def5', '辩论结果：平局'],
+  'winner:none': ['ededed', '辩论结果：无裁决'], 'winner:void': ['ededed', '辩论结果：红方没立论，流局'],
+};
 export async function tick({ api, roster, now, repo }) {
-  const log = [];
+  const log = [], known = new Set();
+  // 用到的标签先确认存在，不存在就建，不依赖 GitHub 加标签时会不会自动建
+  const ensure = async names => {
+    for (const name of names) {
+      if (known.has(name)) continue;
+      if (!(await api('GET', `/labels/${encodeURIComponent(name)}`))) {
+        const [color, description] = LABELS[name] || ['ededed', name.startsWith('handoff:') ? `交给 ${name.slice(8)} 处理` : ''];
+        await api('POST', '/labels', { name, color, description });
+      }
+      known.add(name);
+    }
+  };
   const all = async path => { const out = []; for (let page = 1; ; page++) { const b = await api('GET', `${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`); out.push(...b); if (b.length < 100) return out; } };
   const debates = (await all('/issues?state=all&labels=debate')).filter(i => !i.pull_request && readState(i.body)).sort((a, b) => readState(a.body).n - readState(b.body).n);
 
@@ -163,16 +181,17 @@ export async function tick({ api, roster, now, repo }) {
     const want = r.round <= 5 ? r.speakers.map(s => `handoff:${s}`) : [];
     const have = issue.labels.map(l => l.name).filter(l => l.startsWith('handoff:'));
     for (const l of have.filter(l => !want.includes(l))) await api('DELETE', `/issues/${issue.number}/labels/${encodeURIComponent(l)}`);
-    const add = want.filter(l => !have.includes(l)); if (add.length) await api('POST', `/issues/${issue.number}/labels`, { labels: add });
+    const add = want.filter(l => !have.includes(l)); if (add.length) { await ensure(add); await api('POST', `/issues/${issue.number}/labels`, { labels: add }); }
     if (r.round <= 5) {
       if (!comments.some(c => isBotComment(c) && c.body.includes(`<!-- debate-round ${r.round} -->`))) await api('POST', `/issues/${issue.number}/comments`, { body: roundNote(st, r) });
       log.push(`#${issue.number} 第 ${r.round} 轮，等 ${r.speakers.join('、')}`);
     } else {
-      const w = finalWinner(st, r);
-      await api('POST', `/issues/${issue.number}/comments`, { body: closeNote(st, r, w) });
-      await api('POST', `/issues/${issue.number}/labels`, { labels: [`winner:${w}`] });
+      // 三步各自可重试：中途失败了，下次运行跳过已经做完的
+      const w = finalWinner(st, r), label = `winner:${w}`;
+      if (!comments.some(c => isBotComment(c) && c.body.includes('<!-- debate-done'))) await api('POST', `/issues/${issue.number}/comments`, { body: closeNote(st, r, w) });
+      if (!issue.labels.some(l => l.name === label)) { await ensure([label]); await api('POST', `/issues/${issue.number}/labels`, { labels: [label] }); issue.labels.push({ name: label }); }
       await api('PATCH', `/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' });
-      issue.state = 'closed'; issue.labels.push({ name: `winner:${w}` });
+      issue.state = 'closed';
       log.push(`#${issue.number} 结束：${WINNER[w]}`);
     }
   }
@@ -190,6 +209,7 @@ export async function tick({ api, roster, now, repo }) {
         rows.push({ number: i.number, day: st.day, red: st.red, result: WINNER[w] || w, skips: r.skipped.length });
       }
       const fd = await all('/issues?state=all&labels=from-debate');
+      await ensure(['debate-eval', 'needs-human']);
       await api('POST', '/issues', { title: '每日红蓝辩论：试行结束，请房主决定是否继续', body: evalBody(rows, { total: fd.length, closed: fd.filter(i => i.state === 'closed').length }), labels: ['debate-eval', 'needs-human'] });
       log.push('试行结束，已开评估 issue');
     } else log.push(`已办满 ${TRIAL} 场`);
@@ -202,6 +222,7 @@ export async function tick({ api, roster, now, repo }) {
   if (!roles) { log.push('登记的 Agent 少于 3 个，开不了辩论'); return log; }
   const st = { n: debates.length + 1, day: la.day, topic: TOPICS[la.weekday], opened: now.toISOString(), ...roles };
   const previous = debates.map(i => ({ number: i.number, title: i.title, result: WINNER[(i.labels.map(l => l.name).find(l => l.startsWith('winner:')) || 'winner:').slice(7)] || '进行中' }));
+  await ensure(['debate', `handoff:${st.red}`]);
   const issue = await api('POST', '/issues', { title: `辩论 ${la.day}：${st.topic}（红方 ${st.red}）`, body: issueBody(st, previous, repo), labels: ['debate', `handoff:${st.red}`] });
   await api('POST', `/issues/${issue.number}/comments`, { body: roundNote(st, replay(st, [], now.getTime())) });
   log.push(`已开场 #${issue.number}：红方 ${st.red}，蓝方 ${st.blue.join('、')}，裁判 ${st.judges.join('、')}`);
@@ -217,7 +238,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       headers: { authorization: `Bearer ${process.env.GITHUB_TOKEN}`, accept: 'application/vnd.github+json', 'content-type': 'application/json' },
       body: body && JSON.stringify(body),
     });
-    if (!res.ok && !(method === 'DELETE' && res.status === 404)) throw new Error(`${method} ${path} → ${res.status} ${await res.text()}`);
+    // GET 查标签、DELETE 撤标签时，404 表示不存在，不算错
+    if (!res.ok && !((method === 'DELETE' || method === 'GET') && res.status === 404)) throw new Error(`${method} ${path} → ${res.status} ${await res.text()}`);
     return res.status === 204 || res.status === 404 ? null : res.json();
   };
   const log = await tick({ api, roster: readFileSync(join(ROOT, 'docs/agents/roster.md'), 'utf8'), now: new Date(), repo });

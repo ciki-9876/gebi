@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tick, replay, parseRoster, assignRoles, parseWinner, laParts, TRIAL } from './debate.mjs';
+import { tick, replay, finalWinner, parseRoster, assignRoles, parseWinner, laParts, TRIAL } from './debate.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ROSTER = readFileSync(join(ROOT, 'docs/agents/roster.md'), 'utf8');
@@ -11,11 +11,19 @@ let passed = 0; const failed = [];
 const ok = (cond, name) => { if (cond) passed++; else failed.push(name); };
 
 /* ---------- 假 GitHub ---------- */
-function fakeGitHub() {
-  const issues = [];
+// 标签按最严格的情况模拟：打一个仓库里不存在的标签就报错，所以机器人必须先建好标签。
+// failOnce(method, 片段) 让下一次匹配的请求失败一次，用来测试中途失败后重试。
+function fakeGitHub(labels = []) {
+  const issues = [], catalog = new Map(labels.map(n => [n, {}])), fails = [];
   const find = n => issues.find(i => i.number === n);
+  const known = names => { const miss = names.filter(n => !catalog.has(n)); if (miss.length) throw new Error('422 标签不存在：' + miss.join()); };
   const api = async (method, path, body) => {
+    const f = fails.findIndex(x => x.method === method && path.includes(x.part)); if (f >= 0) { fails.splice(f, 1); throw new Error(`模拟失败 ${method} ${path}`); }
     const [p, q = ''] = path.split('?'), qs = new URLSearchParams(q), seg = p.split('/').filter(Boolean);
+    if (seg[0] === 'labels') {
+      if (method === 'GET') return catalog.has(decodeURIComponent(seg[1])) ? { name: decodeURIComponent(seg[1]) } : null;
+      if (method === 'POST') { if (catalog.has(body.name)) throw new Error('422 标签已存在'); catalog.set(body.name, body); return body; }
+    }
     if (seg[0] !== 'issues') throw new Error('没模拟 ' + path);
     if (seg.length === 1 && method === 'GET') {
       let list = issues.filter(i => qs.get('state') === 'all' || i.state === (qs.get('state') || 'open'));
@@ -23,10 +31,10 @@ function fakeGitHub() {
       const per = +qs.get('per_page') || 30, page = +qs.get('page') || 1;
       return list.slice((page - 1) * per, page * per).map(i => ({ ...i, labels: i.labels.map(l => ({ ...l })) }));
     }
-    if (seg.length === 1 && method === 'POST') { const i = { number: issues.length + 1, title: body.title, body: body.body, state: 'open', labels: (body.labels || []).map(name => ({ name })), comments: [] }; issues.push(i); return i; }
+    if (seg.length === 1 && method === 'POST') { known(body.labels || []); const i = { number: issues.length + 1, title: body.title, body: body.body, state: 'open', labels: (body.labels || []).map(name => ({ name })), comments: [] }; issues.push(i); return i; }
     const i = find(+seg[1]);
     if (seg.length === 2 && method === 'PATCH') { Object.assign(i, body); return i; }
-    if (seg[2] === 'labels' && method === 'POST') { for (const name of body.labels) if (!i.labels.some(l => l.name === name)) i.labels.push({ name }); return i.labels; }
+    if (seg[2] === 'labels' && method === 'POST') { known(body.labels); for (const name of body.labels) if (!i.labels.some(l => l.name === name)) i.labels.push({ name }); return i.labels; }
     if (seg[2] === 'labels' && method === 'DELETE') { i.labels = i.labels.filter(l => l.name !== decodeURIComponent(seg[3])); return null; }
     if (seg[2] === 'comments' && method === 'GET') { const per = +qs.get('per_page') || 30, page = +qs.get('page') || 1; return i.comments.slice((page - 1) * per, page * per); }
     if (seg[2] === 'comments' && method === 'POST') { const c = { body: body.body, user: { type: 'Bot' }, created_at: clock.toISOString() }; i.comments.push(c); return c; }
@@ -34,7 +42,7 @@ function fakeGitHub() {
   };
   // Agent 发言：用的是房主账号，所以 user.type 是 User
   const say = (n, name, text, at = clock) => find(n).comments.push({ body: `— ${name}\n\n${text}`, user: { type: 'User' }, created_at: at.toISOString() });
-  return { issues, api, say, find };
+  return { issues, api, say, find, catalog, failOnce: (method, part) => fails.push({ method, part }) };
 }
 let clock = new Date('2026-10-28T16:30:00Z');
 const at = iso => { clock = new Date(iso); return clock; };
@@ -125,7 +133,7 @@ ok(d2.state === 'closed' && d2.labels.some(l => l.name === 'winner:void'), '红�
 
 /* ---------- 暂停 ---------- */
 {
-  const g = fakeGitHub();
+  const g = fakeGitHub(['project:paused']);
   await g.api('POST', '/issues', { title: '项目开关', body: '', labels: ['project:paused'] });
   at('2026-10-28T17:05:00Z'); await run(g);
   ok(g.issues.length === 1, '项目暂停时不开场');
@@ -156,6 +164,42 @@ ok(d2.state === 'closed' && d2.labels.some(l => l.name === 'winner:void'), '红�
   ok(g.issues.filter(i => i.labels.some(l => l.name === 'debate')).length === TRIAL, '办满后不再开新的一场');
   at('2026-11-06T18:05:00Z'); await run(g);
   ok(g.issues.filter(i => i.labels.some(l => l.name === 'debate-eval')).length === 1, '评估 issue 只开一次');
+}
+
+/* ---------- 标签：第一次运行时仓库里一个都没有 ---------- */
+{
+  const g = fakeGitHub();
+  at('2026-10-28T17:05:00Z'); await run(g);
+  const st = JSON.parse(/<!-- debate (\{.*?\}) -->/.exec(g.find(1).body)[1]);
+  ok(g.catalog.has('debate') && g.catalog.get('debate').description === '每日红蓝辩论' && g.catalog.has(`handoff:${st.red}`), '第一次运行先建 debate 和 handoff 标签，再开场');
+  g.say(1, st.red, '【立论】……'); at('2026-10-28T17:30:00Z'); await run(g);
+  ok(g.catalog.has(`handoff:${st.blue[0]}`), '换人时缺的 handoff 标签也会先建');
+  at('2026-10-29T06:00:00Z'); await run(g); // 后面 4 轮各 3 小时，全部超时；这时洛杉矶还是 10-28 晚上，不会开新场
+  ok(g.find(1).state === 'closed' && g.catalog.has('winner:none') && g.find(1).labels.some(l => l.name === 'winner:none'), '结束时先建 winner 标签再打上');
+}
+
+/* ---------- 裁决要写明胜方才算 ---------- */
+{
+  const st = { red: 'R', blue: ['B1', 'B2'], judges: ['J1', 'J2'], opened: '2026-10-30T17:00:00Z' };
+  const c = (name, text, t) => ({ body: `— ${name}\n${text}`, user: { type: 'User' }, created_at: t });
+  const pre = [c('R', '【立论】', '2026-10-30T17:10:00Z'), c('B1', '【驳论】', '2026-10-30T17:20:00Z'), c('B2', '【补充】', '2026-10-30T17:30:00Z'), c('R', '【回应】', '2026-10-30T17:40:00Z'), c('J1', '【裁决】\n**胜方**：红方', '2026-10-30T18:00:00Z'), c('J2', '【裁决】我还需要时间', '2026-10-30T18:10:00Z')];
+  const r1 = replay(st, pre, new Date('2026-10-30T18:20:00Z').getTime());
+  ok(r1.round === 5 && r1.speakers.join() === 'J2' && !('J2' in r1.verdicts), '没写胜方的裁决不算交了，handoff 留给这位裁判');
+  const r2 = replay(st, [...pre, c('J2', '【裁决】\n**胜方**：蓝方', '2026-10-30T18:30:00Z')], new Date('2026-10-30T18:40:00Z').getTime());
+  ok(r2.round === 6 && r2.verdicts.J2 === 'blue', '补一条写明胜方的裁决就算数');
+  const r3 = replay(st, pre, new Date('2026-10-30T21:00:00Z').getTime());
+  ok(r3.round === 6 && finalWinner(st, r3) === 'red' && r3.skipped.some(s => s.round === 5 && s.who.join() === 'J2'), '一直没写胜方就按超时处理，结果按另一位');
+}
+
+/* ---------- 结束时中途失败，重试不重复 ---------- */
+for (const [method, part, name] of [['POST', '/labels', '打 winner 标签'], ['PATCH', '/issues/1', '关闭 issue']]) {
+  const g = fakeGitHub();
+  at('2026-10-28T17:05:00Z'); await run(g);
+  at('2026-10-28T20:10:00Z'); g.failOnce(method, part); // 红方超时流局，结束的某一步失败
+  let threw = false; try { await run(g); } catch (e) { threw = true; }
+  at('2026-10-28T20:20:00Z'); await run(g);
+  const d = g.find(1);
+  ok(threw && d.state === 'closed' && d.comments.filter(c => c.body.includes('<!-- debate-done')).length === 1 && d.labels.filter(l => l.name === 'winner:void').length === 1, `${name}失败后重试：只发一次总结、只打一次标签，最后关闭`);
 }
 
 for (const f of failed) console.log('失败  ' + f);
