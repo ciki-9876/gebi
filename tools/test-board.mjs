@@ -72,6 +72,31 @@ ok(r.status === 0, '路由机器人的评论不算');
 r = run(base({ 'pulls?state=open': [pr(7, 'PCClaude', ['handoff:PCClaude'])] }));
 ok(r.status === 10 && /等你修改/.test(r.stdout), '评审给了“需修改”：列为等你修改');
 
+// 评论超过 100 条：新反馈在第二页也要看到
+const page1 = Array.from({ length: 100 }, (_, i) => c('PCClaude', 200 - i * 0.5, '旧'));
+r = run(base({ 'pulls?state=open': [mine], 'issues/7/comments?per_page=100&page=1': page1, 'issues/7/comments?per_page=100&page=2': [c('HomeGPT', 1, '第 101 条是新反馈')] }));
+ok(r.status === 10 && /新评论/.test(r.stdout), '评论超过 100 条：第二页的新反馈也能看到');
+
+// 每日辩论 issue 上的活动不算
+const dbg = (type, h, labels) => ({ ...ev(type, 'ciki-9876', h), payload: { issue: { labels: labels.map(name => ({ name })) } } });
+r = run(base({ events: [dbg('IssueCommentEvent', 1, ['debate']), dbg('IssuesEvent', 2, ['debate-eval', 'needs-human']), ...old] }), ['--status']);
+ok(/mode=dormant/.test(r.stdout), '辩论 issue 上的发言和标签变化不算活动，仍然休眠');
+r = run(base({ events: [dbg('IssueCommentEvent', 1, ['bug']), ...old] }), ['--status']);
+ok(/mode=active/.test(r.stdout), '别的 issue 上的发言照常算活动');
+
+// 只能定时唤醒模型的环境：下次隔多久
+const nc = d => run(d, ['--next-check']).stdout.trim();
+ok(nc(base()) === '30', '--next-check：活跃 30 分钟');
+ok(nc(base({ events: old })) === '1440', '--next-check：休眠 1440 分钟');
+ok(nc(base({ 'issues?state=open&labels=project%3Apaused': [{ number: 9 }] })) === '1440', '--next-check：暂停也是 1440（不停掉定时，只拉到最慢）');
+
+// 暂停 → 撤销标签 → 自动恢复（脚本环境：定时一直在跑，下一次就列出待办）
+const todoPR = [pr(5, 'HomeGPT', ['ready-for-review', 'handoff:PCClaude'])];
+const pausedD = base({ 'issues?state=open&labels=project%3Apaused': [{ number: 9 }], 'pulls?state=open': todoPR });
+const resumedD = base({ 'pulls?state=open': todoPR });
+const seq = [run(pausedD).status, run(pausedD).status, run(resumedD).status];
+ok(seq.join() === '0,0,10', '暂停期间两次检查都退出 0，撤销 project:paused 后的下一次检查退出 10');
+
 // 可合并
 r = run(base({ 'pulls?state=open': [pr(8, 'HomeGPT', ['reviewed:MacGPT'])], 'commits/sha8/check-runs': checks(['check', 'identity', 'review']) }));
 ok(r.status === 10 && /可以由你合并/.test(r.stdout), '评审通过且三项检查全绿：可以合并');
