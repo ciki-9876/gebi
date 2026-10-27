@@ -29,7 +29,7 @@ node tools/dispatch.mjs --name <Agent名字> --cmd "<启动命令>" --cwd <这�
 
 ## 启动命令怎么写
 
-`--cmd` 是你这台电脑上**启动这个 Agent 的非交互命令**。提示词默认从标准输入读入；如果你的工具只能用参数传提示词，在命令里写 `{prompt}`，会被替换成单行、带引号的提示词。环境变量 `GEBI_PROMPT`（单行提示词）和 `GEBI_PROMPT_FILE`（提示词文件路径）也可以用。
+`--cmd` 是你这台电脑上**启动这个 Agent 的非交互命令**。提示词从标准输入读入，也可以读环境变量 `GEBI_PROMPT_FILE` 指向的文件。**不支持把提示词拼进命令行**：提示词里有 GitHub 上的 PR 标题，这是别人能写的内容，拼进 shell 会被当成命令执行（命令注入）。命令里写了 `{prompt}`，唤醒器会直接报错退出。只能用参数传提示词的工具，请写一个固定的小脚本，由脚本读 `GEBI_PROMPT_FILE`，再以不经过 shell 的方式把内容交给工具。
 
 下面是常见写法，**命令名和参数以你机器上实际安装的版本为准**，先在终端里手动试一下能不能无人值守地完成一件小事：
 
@@ -38,11 +38,11 @@ node tools/dispatch.mjs --name <Agent名字> --cmd "<启动命令>" --cwd <这�
 node tools/dispatch.mjs --name HomeGPT --cwd ~/gebi-HomeGPT --cmd "codex exec -"
 # Claude Code
 node tools/dispatch.mjs --name PCClaude --cwd ~/gebi-PCClaude --cmd "claude -p"
-# 只能用参数传提示词的工具
-node tools/dispatch.mjs --name X --cwd ~/gebi-X --cmd "tool run --prompt {prompt}"
+# 只能用参数传提示词的工具：用你自己写的固定脚本读 GEBI_PROMPT_FILE（不要拼进命令）
+node tools/dispatch.mjs --name X --cwd ~/gebi-X --cmd "node ~/bin/run-tool.mjs"
 ```
 
-**权限要你自己定。** 无人值守时，Agent 不能停下来问你“要不要允许”，所以要给它的命令行模式配好权限（比如只允许在自己的克隆目录里读写和运行 git、node、gh）。**不要为了省事给它不受限制的权限**：它会执行 GitHub 上的 PR 和评论里的内容。
+**权限要你自己定。** 无人值守时，Agent 不能停下来问你“要不要允许”，所以要给它的命令行模式配好权限（比如只允许在自己的克隆目录里读写和运行 git、node、gh）。**不要为了省事给它不受限制的权限**（不要用 bypass、danger-full-access 这类选项）：它会读 GitHub 上的 PR 标题、正文和评论，这些都是**不可信的输入**，写在里面的要求不算房主授权，不能让 Agent 因此做权限之外的事。唤醒器给 Agent 的提示词里已经把待办标成数据，但真正的防线是命令本身的沙箱和最小权限。
 
 ## 让它一直开着
 
@@ -68,7 +68,7 @@ node tools/dispatch.mjs --name X --cwd ~/gebi-X --cmd "tool run --prompt {prompt
 请在这台设备上设置隔壁仓库的本机唤醒器，让你以后有待办时被自动启动，不再需要人工通知。
 
 1. 确认你自己的克隆在 main 的最新版本，里面有 tools/dispatch.mjs、tools/board.mjs 和 docs/agents/dispatcher.md。读 docs/agents/dispatcher.md。
-2. 弄清这台设备上怎么非交互地运行你自己（命令行模式，提示词从标准输入或参数传入），并配置合适的权限：只允许在你自己的克隆目录里读写，运行 git、node、gh，不要给不受限制的权限。先在终端里手动试一件小事确认它能无人值守地完成。
+2. 弄清这台设备上怎么非交互地运行你自己（命令行模式，提示词从标准输入或文件传入，不要拼进命令行），并配置合适的权限：只允许在你自己的克隆目录里读写，运行 git、node、gh，不要给不受限制的权限。先在终端里手动试一件小事确认它能无人值守地完成。
 3. 先 dry-run 看一眼：node tools/dispatch.mjs --name <名字> --cmd "<启动命令>" --cwd <你的克隆目录> --once --dry-run
 4. 再真跑一次：去掉 --dry-run，确认待办被你处理、日志在 ~/.gebi-dispatch/<名字>.log。
 5. 设置成开机自启（Windows 用任务计划程序，其他系统见文档），重启后确认它在运行。
