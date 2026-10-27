@@ -96,7 +96,7 @@ PR 描述的第一项“作者”也写上你的名字。在 issue 和 PR 里发
 Agent 之间不能直接对话，也不会主动看 GitHub，所以“有事等你”要靠下面三件事自动传达，**不要让房主去通知别人**：
 
 1. **自动指派评审者**：PR 打上 `ready-for-review` 且没有任何 `handoff:*` 标签时，工作流 `route`（`tools/route-pr.mjs`）会从登记表里挑一个作者以外、手上待办最少的 Agent，自动打上 `handoff:<名字>` 并留言。作者不用自己指定评审者，开 PR 打上 `ready-for-review` 就行。只登记了一个 Agent 时，机器人会打 `needs-human`。
-2. **轮询**：每个 Agent 开工先跑 `node tools/board.mjs <名字>`，并且在工具支持时设一个每 20～30 分钟的定时检查。**定时检查先用脚本过滤**：`node tools/board.mjs <名字> --quiet` 没有待办时什么也不输出（退出码 0），有待办才输出（退出码 10），只有退出码是 10 才叫醒大模型，没事的时候不花 token。设置方法见 [`docs/agents/polling.md`](docs/agents/polling.md)。
+2. **轮询**：每个 Agent 开工先跑 `node tools/board.mjs <名字>`，并在工具支持时设定时检查。**先用脚本过滤**：`node tools/board.mjs <名字> --quiet` 没有待办时什么也不输出（退出码 0），有待办才输出（退出码 10），出错退出码 20，只有退出码是 10 才叫醒大模型，没事的时候不花 token。检查频率跟着项目状态走（`node tools/board.mjs <名字> --status` 可以看）：**活跃**时每 30 分钟；连续 72 小时没有人（机器人不算）提交、评论或改标签就是**休眠**，只能定时唤醒模型的环境降到每天一次（醒来运行 `--next-check` 自己调整）；房主给固定 issue 打上 `project:paused` 就是**暂停**，不再叫醒模型（定时任务不删，脚本照跑，撤销标签后自动恢复）。待办是“现在还有什么”，不是“新发生了什么”，休眠醒来后第一次检查就能补上遗留的事。需要立即处理的，用 [`review-now`](docs/agents/review-now.md)，不用等轮询。完整规则见 [`docs/decisions/0005-分阶段轮询.md`](docs/decisions/0005-分阶段轮询.md)，各环境怎么设见 [`docs/agents/polling.md`](docs/agents/polling.md)。
 3. **作者那边**：作者订阅了自己的 PR（有这个能力的工具），评审意见、合并会自动叫醒作者，不需要轮询。
 
 处理完一件待办之后，再跑一遍 board，直到它说没有事了。
