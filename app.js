@@ -4507,8 +4507,8 @@ function typeOfName(name, mime) {
   if (/^text\//.test(mime || '')) return 'doc';
   return 'file';
 }
-// 强信号：关键字开头、;{} 结尾、整行是 name(...) 调用、单独的闭括号
-const CODE_STRONG = /^\s*(import |export |from \S+ import |def \w+\s*\(|class \w+\s*[:({]|class \w+ extends |(async )?function\b\s*[\w$]*\s*\(|async (def|\()|(const|let|var) [\w$[{][^=]*[=;]|return\b|package |#include|#!|SELECT |CREATE |INSERT |UPDATE |\/\/)|[;{}]\s*$|^\s*[\w$.]+\s*\(.*\)\s*;?\s*$|^\s*[)\]]+[;,]?\s*$/;
+// 强信号：关键字开头、带代码符号并以 ;{} 结尾（光是英文句子后加分号不算）、整行是 name(...) 调用、单独的闭括号
+const CODE_STRONG = /^\s*(import |export |from \S+ import |def \w+\s*\(|class \w+\s*[:({]|class \w+ extends |(async )?function\b\s*[\w$]*\s*\(|async (def|\()|(const|let|var) [\w$[{][^=]*[=;]|return\b|package |#include|#!|SELECT |CREATE |INSERT |UPDATE |\/\/)|^(?=.*[(){}\[\]=<>_$"'`]).*[;{}]\s*$|^\s*[;{}]+\s*$|^\s*[\w$.]+\s*\(.*\)\s*;?\s*$|^\s*[)\]]+[;,]?\s*$/;
 // 弱信号：缩进（不含 Markdown 列表）、关键字开头以 : 结尾的块、赋值、装饰器
 const CODE_WEAK = /^(\t| {2,})(?![-*+] |\d+\. )\S|^\s*(if|elif|else|for|while|try|except|finally|with)\b.*:\s*$|^\s*[\w$.[\]]+\s*[-+*\/]?=[^=]|^\s*@\w/;
 // 粘贴的文本或 .html 文件：网页、小游戏、文档还是代码
