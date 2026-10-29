@@ -45,10 +45,10 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP
 | `docs/PUBLISH.md` | 发布协议：清单格式、发布链接、发布包、类型与物件、发布工具 |
 | `tools/gebi-publish.mjs` | 发布工具：零依赖的 MCP 服务器兼命令行，给用户的 AI 用 |
 | `CONTRIBUTING.md` | 协作流程：分支、提交、PR、验收清单 |
-| `AGENTS.md` | 多个 Agent 共用一个账号时的协作规则：身份、任务领取、评审、交接 |
+| `AGENTS.md` | 多个 Agent 共用一个账号时的协作规则：身份、任务领取、自己验证并合并 |
 | `docs/agents/roster.md` | Agent 登记表 |
 | `docs/decisions/` | 已经定下的决定和理由 |
-| `tools/check-agent.mjs` | 协作检查：分支名、提交尾注、评审标签 |
+| `tools/check-agent.mjs` | 协作检查：分支名、提交尾注、作者标签 |
 | `docs/隔壁-迭代计划.xlsx` | 迭代计划与实验指标 |
 
 设计系统页面：https://claude.ai/artifact/HhRjb3bzSRvWut8DoRvgiG

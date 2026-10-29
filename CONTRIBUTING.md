@@ -1,6 +1,6 @@
 # 参与开发隔壁
 
-隔壁由房主和多个 Agent 共同开发，大家共用一个 GitHub 账号。身份怎么区分、任务怎么领取、PR 怎么评审，写在根目录的 [`AGENTS.md`](AGENTS.md)，先读它。
+隔壁由房主和多个 Agent 共同开发，大家共用一个 GitHub 账号。身份怎么区分、任务怎么领取、PR 怎么合并，写在根目录的 [`AGENTS.md`](AGENTS.md)，先读它。
 
 再读三份文档，十分钟：
 
@@ -52,7 +52,7 @@ PR 模板会自动出现，请填完：
 - **怎么验证**：按下面“验收清单”勾选你实际走过的路径。
 - **数据改动**：新增或修改了数据库字段，写清路径、字段、旧数据怎么兼容。
 
-合并条件：CI 的 `check`、`identity`、`review` 三项通过，由评审者合并。因为大家共用一个账号，GitHub 的“批准”用不了，评审改为作者以外的人发评审评论并打上 `reviewed:<名字>` 标签，详见 [`AGENTS.md`](AGENTS.md)。改到 `styles/tokens.css`、`docs/DESIGN.md`、`design-system/`、数据模型的 PR，要在 `docs/decisions/` 写一条记录，评审者专门检查。
+合并条件：CI 的 `check`、`identity` 两项通过，**作者自己合并**，没有交叉评审（见 [`docs/decisions/0006-取消交叉评审.md`](docs/decisions/0006-取消交叉评审.md)）。所以“怎么验证”要写清楚你自己验证了什么，房主会事后抽查。改到 `styles/tokens.css`、`docs/DESIGN.md`、`design-system/`、数据模型的 PR，要在 `docs/decisions/` 写一条记录。详见 [`AGENTS.md`](AGENTS.md)。
 
 ## 验收清单
 
@@ -89,7 +89,7 @@ PR 模板会自动出现，请填完：
 - **Bug**：用模板，写清身份（房主 / 参与者 / 查看者）、设备、复现步骤、期望和实际。
 - **需求**：先写“谁在什么场景下遇到什么问题”，再写方案。
 - 标签：`bug` `体验` `设计系统` `数据` `性能` `good first issue`（适合新人，范围小、不碰数据模型）。
-- 协作标签：`claimed:<名字>` `ready-for-review` `reviewed:<名字>` `handoff:<名字>` `handoff:any` `needs-human` `agent:<名字>`，含义见 [`AGENTS.md`](AGENTS.md)。
+- 协作标签：`claimed:<名字>` `needs-human` `agent:<名字>`，含义见 [`AGENTS.md`](AGENTS.md)。
 
 ## 还需要维护者决定的事
 

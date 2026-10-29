@@ -59,5 +59,5 @@
 
 1. 在 `styles/tokens.css` 里加一行，行尾注释写清用途（用在哪、放在什么底色上）。没有注释，`sync-tokens` 会拒绝。
 2. 运行 `node tools/sync-tokens.mjs`，再运行 `node tools/check.mjs`。
-3. PR 里贴改动前后的截图，说明为什么现有 token 不够。改到 `styles/tokens.css` 的 PR 需要维护者评审（见 `.github/CODEOWNERS`）。
+3. PR 里贴改动前后的截图，说明为什么现有 token 不够。改到 `styles/tokens.css` 的 PR 要在 `docs/decisions/` 写一条记录，房主会事后抽查。
 4. 合并后，维护者把 `design-system/project/` 的改动发布到设计系统页面。
