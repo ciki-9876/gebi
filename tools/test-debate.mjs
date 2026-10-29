@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { tick, replay, finalWinner, parseRoster, assignRoles, parseWinner, laParts, TRIAL } from './debate.mjs';
+import { tick, replay, finalWinner, parseRoster, assignRoles, parseWinner, laParts, TRIAL, DORMANT_HOURS } from './debate.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const ROSTER = readFileSync(join(ROOT, 'docs/agents/roster.md'), 'utf8');
@@ -15,6 +15,8 @@ const ok = (cond, name) => { if (cond) passed++; else failed.push(name); };
 // failOnce(method, 片段) 让下一次匹配的请求失败一次，用来测试中途失败后重试。
 function fakeGitHub(labels = []) {
   const issues = [], catalog = new Map(labels.map(n => [n, {}])), fails = [];
+  // 仓库事件（休眠判断用）：默认是“刚刚有人提交”，项目活跃；测休眠时换掉
+  const g = { events: null };
   const find = n => issues.find(i => i.number === n);
   const known = names => { const miss = names.filter(n => !catalog.has(n)); if (miss.length) throw new Error('422 标签不存在：' + miss.join()); };
   const api = async (method, path, body) => {
@@ -24,6 +26,7 @@ function fakeGitHub(labels = []) {
       if (method === 'GET') return catalog.has(decodeURIComponent(seg[1])) ? { name: decodeURIComponent(seg[1]) } : null;
       if (method === 'POST') { if (catalog.has(body.name)) throw new Error('422 标签已存在'); catalog.set(body.name, body); return body; }
     }
+    if (seg[0] === 'events') { const all = g.events || [{ type: 'PushEvent', actor: { login: 'ciki-9876' }, created_at: clock.toISOString() }]; const per = +qs.get('per_page') || 30, page = +qs.get('page') || 1; return all.slice((page - 1) * per, page * per); }
     if (seg[0] !== 'issues') throw new Error('没模拟 ' + path);
     if (seg.length === 1 && method === 'GET') {
       let list = issues.filter(i => qs.get('state') === 'all' || i.state === (qs.get('state') || 'open'));
@@ -42,7 +45,7 @@ function fakeGitHub(labels = []) {
   };
   // Agent 发言：用的是房主账号，所以 user.type 是 User
   const say = (n, name, text, at = clock) => find(n).comments.push({ body: `— ${name}\n\n${text}`, user: { type: 'User' }, created_at: at.toISOString() });
-  return { issues, api, say, find, catalog, failOnce: (method, part) => fails.push({ method, part }) };
+  return Object.assign(g, { issues, api, say, find, catalog, failOnce: (method, part) => fails.push({ method, part }) });
 }
 let clock = new Date('2026-10-28T16:30:00Z');
 const at = iso => { clock = new Date(iso); return clock; };
@@ -200,6 +203,36 @@ for (const [method, part, name] of [['POST', '/labels', '打 winner 标签'], ['
   at('2026-10-28T20:20:00Z'); await run(g);
   const d = g.find(1);
   ok(threw && d.state === 'closed' && d.comments.filter(c => c.body.includes('<!-- debate-done')).length === 1 && d.labels.filter(l => l.name === 'winner:void').length === 1, `${name}失败后重试：只发一次总结、只打一次标签，最后关闭`);
+}
+
+/* ---------- 已退出的 Agent 不排班 ---------- */
+{
+  const md = '| `A1` | Agent | Claude Code | x |\n| `A2` | Agent | Codex | x |\n| `A3` | Agent | Codex | x |\n| `A4` | Agent | Claude Code | x |\n| `Gone` | 已退出 | Codex | x |\n| `owner` | 人 | GitHub 网页 | x |\n';
+  const list = parseRoster(md).map(a => a.name);
+  ok(list.join() === 'A1,A2,A3,A4', '登记表里类型不是 Agent 的行（已退出、人）不参加排班');
+  const h = []; for (let i = 0; i < 8; i++) h.push(assignRoles(parseRoster(md), h));
+  ok(h.every(r => ![r.red, ...r.blue, ...r.judges].includes('Gone')), '连排 8 场都不会排到已退出的 Agent');
+}
+
+/* ---------- 休眠时不开场（和 board.mjs 的 0005 规则一致） ---------- */
+{
+  const ev = (type, login, hoursAgo, labels) => ({ type, actor: { login }, created_at: new Date(clock.getTime() - hoursAgo * 3600e3).toISOString(), payload: labels ? { issue: { labels: labels.map(name => ({ name })) } } : {} });
+  const g = fakeGitHub();
+  at('2026-10-30T17:05:00Z');
+  g.events = [ev('PushEvent', 'ciki-9876', DORMANT_HOURS + 1)];
+  let log = await run(g);
+  ok(g.issues.length === 0 && log.some(l => l.includes('休眠')), `${DORMANT_HOURS} 小时内没有人活动：不开场`);
+  g.events = [ev('IssueCommentEvent', 'ciki-9876', 1, ['debate']), ev('IssueCommentEvent', 'github-actions[bot]', 1), ev('PushEvent', 'ciki-9876', DORMANT_HOURS + 5)];
+  log = await run(g);
+  ok(g.issues.length === 0, '只有辩论 issue 上的发言和机器人的动作，仍算休眠，不开场');
+  at('2026-10-30T18:05:00Z');
+  g.events = [ev('PullRequestEvent', 'ciki-9876', 0.5)];
+  await run(g);
+  ok(g.issues.length === 1, '有人开了 PR，下一次运行就恢复开场');
+  const g2 = fakeGitHub();
+  g2.events = Array.from({ length: 300 }, () => ev('IssueCommentEvent', 'github-actions[bot]', 1));
+  at('2026-10-30T17:05:00Z'); await run(g2);
+  ok(g2.issues.length === 1, '翻了 3 页全是机器人事件、判断不了：按活跃处理（同 board.mjs），照常开场');
 }
 
 for (const f of failed) console.log('失败  ' + f);

@@ -10,6 +10,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 export const TZ = 'America/Los_Angeles', OPEN_HOUR = 10, ROUND_HOURS = 3, TRIAL = 7;
 export const BOT = '— 辩论机器人';
 const H = 3600e3;
+// 休眠判断和 tools/board.mjs（0005）用同一套规则：72 小时内没有人（机器人不算，辩论 issue 上的动静也不算）
+// 在仓库里提交、评论、评审、开关 issue/PR、改标签，就是休眠。休眠时只能定时唤醒模型的 Agent 一天才查一次，
+// 赶不上每轮 3 小时的时限，所以不开场；有人活动后下一次运行自动恢复
+export const DORMANT_HOURS = 72;
+const ACTIVITY = new Set(['PushEvent', 'PullRequestEvent', 'PullRequestReviewEvent', 'PullRequestReviewCommentEvent', 'IssueCommentEvent', 'IssuesEvent']);
+const QUIET_LABELS = ['debate', 'debate-eval'];
+// 返回 { last } 最近一次有效活动的时间（0 表示 72 小时内没有），或 { unknown: true } 翻了 3 页还判断不了（按活跃处理，同 board）
+export async function lastActivity(api, now) {
+  for (let page = 1; page <= 3; page++) {
+    const b = await api('GET', `/events?per_page=100&page=${page}`) || [];
+    const hit = b.filter(e => ACTIVITY.has(e.type) && !/\[bot\]$/.test((e.actor && e.actor.login) || '')
+      && !((e.payload && e.payload.issue && e.payload.issue.labels) || []).some(l => QUIET_LABELS.includes(l.name)));
+    if (hit.length) return { last: Math.max(...hit.map(e => Date.parse(e.created_at))) };
+    if (b.length < 100 || now - Date.parse(b[b.length - 1].created_at) > DORMANT_HOURS * H) return { last: 0 };
+  }
+  return { unknown: true };
+}
 export const ROUNDS = [
   null,
   { mark: '【立论】', side: 'red', text: '红方立论' },
@@ -217,6 +234,8 @@ export async function tick({ api, roster, now, repo }) {
   }
   if (la.hour < OPEN_HOUR) { log.push(`洛杉矶 ${la.hour} 点，还没到 ${OPEN_HOUR} 点`); return log; }
   if (debates.some(i => readState(i.body).day === la.day)) { log.push(`${la.day} 已经开过`); return log; }
+  const act = await lastActivity(api, now.getTime());
+  if (!act.unknown && !(act.last && now.getTime() - act.last <= DORMANT_HOURS * H)) { log.push(`项目休眠中（${DORMANT_HOURS} 小时内没有人活动），不开场`); return log; }
   const agents = parseRoster(roster), history = debates.map(i => readState(i.body));
   const roles = assignRoles(agents, history);
   if (!roles) { log.push('登记的 Agent 少于 3 个，开不了辩论'); return log; }
