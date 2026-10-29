@@ -1,7 +1,7 @@
 name: agent
 on:
   pull_request:
-    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+    types: [opened, reopened, synchronize, edited]
 permissions:
   contents: read
   issues: write
@@ -15,16 +15,5 @@ jobs:
         with:
           node-version: 20
       - run: node tools/check-agent.mjs
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  review:
-    needs: identity
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: node tools/check-agent.mjs --review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

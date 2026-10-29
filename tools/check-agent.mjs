@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // 多 Agent 协作检查，规则见 AGENTS.md。不依赖任何 npm 包。
 //   node tools/check-agent.mjs            本地：检查当前分支名和相对 origin/main 的提交尾注
-//   node tools/check-agent.mjs            CI：检查 PR 的分支名、提交尾注，自动加 agent: 标签，新提交时撤下 reviewed: 标签
-//   node tools/check-agent.mjs --review   CI：检查 PR 是否已由作者以外的人评审
+//   node tools/check-agent.mjs            CI：检查 PR 的分支名、提交尾注，自动加 agent: 标签
+// 不检查评审：Agent 之间不做交叉评审（docs/decisions/0006）。
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -76,17 +76,6 @@ async function api(method, path, body) {
 const author = authorOf(pr.head.ref);
 const labels = new Set(pr.labels.map(l => l.name));
 
-if (process.argv.includes('--review')) {
-  // 读实时标签：同一轮里 identity 可能刚撤下过 reviewed:
-  const live = (await api('GET', `/issues/${pr.number}/labels?per_page=100`)) || [];
-  const reviewers = live.map(l => l.name).filter(l => l.startsWith('reviewed:')).map(l => l.slice(9));
-  const valid = reviewers.filter(r => roster.has(r) && r !== author);
-  if (author && reviewers.includes(author)) errors.push(`作者 ${author} 不能评审自己的 PR，请去掉 reviewed:${author}`);
-  if (author && !valid.length) errors.push('还没有作者以外的人评审：评审者发表评审评论后，打上 reviewed:<评审者名字>');
-  if (valid.length) notes.push(`已评审：${valid.join('、')}`);
-  finish('评审检查通过');
-}
-
 if (author) {
   const commits = [];
   for (let page = 1; ; page++) {
@@ -99,14 +88,6 @@ if (author) {
   if (!labels.has(`agent:${author}`)) {
     await api('POST', `/issues/${pr.number}/labels`, { labels: [`agent:${author}`] });
     notes.push(`已加上标签 agent:${author}`);
-  }
-}
-
-/* 推了新提交：旧的评审作废 */
-if (event.action === 'synchronize') {
-  for (const l of [...labels].filter(l => l.startsWith('reviewed:'))) {
-    await api('DELETE', `/issues/${pr.number}/labels/${encodeURIComponent(l)}`);
-    notes.push(`有新提交，已撤下 ${l}，需要重新评审`);
   }
 }
 
