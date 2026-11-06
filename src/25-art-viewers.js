@@ -125,8 +125,7 @@ async function artDownload(e) {
   const art = e.art, u = await artUrl(art), name = art.name || (e.title || 'file');
   if (!u) return toast('文件没找到');
   try {
-    const dl = CLOUD.ready && window.claude && window.claude.use ? await window.claude.use('downloads') : null;
-    if (dl) { const b = await (await fetch(u)).blob(); await dl.save({ filename: name, data: b }); return; }
+    if (CLOUD.ready && DATA.available()) { const b = await (await fetch(u)).blob(); if (await DATA.save(name, b)) return; }
   } catch (x) { if (x && x.code === 'declined') return; }
   const a = document.createElement('a'); a.href = u; a.download = name; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
 }

@@ -47,8 +47,8 @@ async function boot() {
   }
   pubFromHash();
   try {
-    if (window.claude && window.claude.use) {
-      const s = await window.claude.use('sample');
+    {
+      const s = await DATA.sample();
       if (s) { S.sample = s; try { const lim = await s.limits(); S.sampleTools = !!(lim && lim.tools); } catch (e) {} updateAgentStatus(); }
     }
   } catch (e) {}

@@ -1910,16 +1910,70 @@ function clearMarker() { if (G.marker) { G.root.remove(G.marker); G.marker = nul
 function ripple(dir) { G.clickDir.copy(dir).normalize(); G.clickT = 0; }
 
 /* ============================================================
+   Data layer: the only file that talks to the platform.
+   Today it is the claude.ai artifact runtime (db, user, assets,
+   downloads, sample). Moving to our own backend (stage 3 in
+   docs/ARCHITECTURE.md) means rewriting this file only; every
+   other file goes through DATA.
+   ============================================================ */
+const DATA = (() => {
+  const rt = () => (window.claude && window.claude.use) ? window.claude : null;
+  const use = name => { const c = rt(); return c ? c.use(name).catch(() => null) : Promise.resolve(null); };
+  let db = null, user = null, assetsP = null;
+  const docMap = s => new Map(s.docs.filter(d => d.exists).map(d => [d.id, d.data()]));
+  return {
+    // 有没有平台：没有时页面退回浏览器本地存储
+    available: () => !!rt(),
+    // 登录并连上数据库。返回 { id, isOwner, canWrite }；连不上返回 null
+    async connect() {
+      if (!rt()) return null;
+      const [d, u] = await Promise.all([use('db'), use('user')]);
+      if (!d || !u) return null;
+      const me = await u.me(); if (!me || !me.id) return null;
+      db = d; user = u;
+      return { id: me.id, isOwner: !!me.isOwner, canWrite: await u.can('data.write') };
+    },
+    // 读一个文档：不存在返回 null，出错抛出
+    async get(path) { const s = await db.doc(path).get(); return s.exists ? s.data() : null; },
+    // 整个覆盖写入。失败时抛出带 code 的错误：invalid_argument（没有写权限或格式不对）、
+    // quota_exceeded、resource_exhausted、revoked。换后端时把错误映射成这几个 code，cloudWrite() 靠它们给提示
+    set(path, body) { return db.doc(path).set(body); },
+    // 订阅一个文档：cb(data | null)
+    watchDoc(path, cb, onErr) { return db.doc(path).onSnapshot(s => cb(s.exists ? s.data() : null), onErr); },
+    // 订阅一个集合的直接子文档：cb(Map<id, data>)
+    watchCollection(path, cb, onErr) { return db.collection(path).onSnapshot(s => cb(docMap(s)), onErr); },
+    // 用户 id → { name }，名字取不到时为空字符串
+    profiles(ids) { return user ? user.profiles(ids) : Promise.resolve({}); },
+    // 上传文件，返回文件 id；平台不可用返回 null（调用方给提示），上传失败抛出带 code 的错误
+    async upload(blob, type) {
+      if (!db) return null;
+      if (!assetsP) assetsP = use('assets');
+      const a = await assetsP; if (!a) return null;
+      return (await a.upload(blob, { type })).id;
+    },
+    // 文件 id → 可以放进 <img>/<video>/fetch 的地址
+    fileUrl: id => '/_blob/' + id,
+    // 让浏览者保存一个文件：返回 true 已保存；false 平台不支持（调用方自己退回普通下载）；
+    // 浏览者取消时抛出 code 为 declined 的错误
+    async save(filename, data) {
+      const dl = await use('downloads'); if (!dl) return false;
+      await dl.save({ filename, data }); return true;
+    },
+    // 房间里的 AI（Bit）用的模型调用。不是数据，但同样来自平台，换后端时一并替换
+    sample: () => use('sample'),
+  };
+})();
+/* ============================================================
    Cloud: accounts, shared rooms, visits, messages, hosted works
    (artifact db + user). Without them the page runs on local storage.
    ============================================================ */
-const CLOUD = { ready: false, db: null, user: null, me: null, isOwner: false, canWrite: null, readOnly: false, site: null, rooms: new Map(), msgs: new Map(), visits: new Map(), lastSeen: 0, landing: null, greeted: false };
+const CLOUD = { ready: false, me: null, isOwner: false, canWrite: null, readOnly: false, site: null, rooms: new Map(), msgs: new Map(), visits: new Map(), lastSeen: 0, landing: null, greeted: false };
 const SHARE_BASE = 'https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP';
 const NAMES = new Map();
 const WQ = new Map();
 function cloudWrite(path, body) {
   const prev = WQ.get(path) || Promise.resolve();
-  const p = prev.catch(() => {}).then(() => CLOUD.db.doc(path).set(body));
+  const p = prev.catch(() => {}).then(() => DATA.set(path, body));
   WQ.set(path, p);
   p.catch(e => {
     const c = e && e.code;
@@ -1939,20 +1993,16 @@ function ago(ts) {
 }
 async function initCloud() {
   try {
-    if (!window.claude || !window.claude.use) return;
-    const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
-    if (!db || !user) return;
-    const me = await user.me(); if (!me || !me.id) return;
-    Object.assign(CLOUD, { db, user, me, isOwner: !!me.isOwner });
-    CLOUD.canWrite = await user.can('data.write');
-    try { const st = await db.doc(`data/users/${me.id}/state`).get(); CLOUD.lastSeen = st.exists ? (+st.data().lastSeen || 0) : 0; } catch (e) {}
+    const me = await DATA.connect(); if (!me) return;
+    Object.assign(CLOUD, { me: { id: me.id }, isOwner: me.isOwner, canWrite: me.canWrite });
+    try { const st = await DATA.get(`data/users/${me.id}/state`); CLOUD.lastSeen = st ? (+st.lastSeen || 0) : 0; } catch (e) {}
     CLOUD.ready = true;
     loadPocket();
     const err = e => { if (e && e.code === 'revoked') { CLOUD.ready = false; syncChrome(); } };
-    db.doc('site/room302').onSnapshot(s => { CLOUD.site = s.exists ? s.data() : null; onSite(); }, err);
-    db.collection('rooms').onSnapshot(s => { CLOUD.rooms = new Map(s.docs.filter(d => d.exists).map(d => [d.id, d.data()])); onRooms(); }, err);
-    db.collection('msgs').onSnapshot(s => { CLOUD.msgs = new Map(s.docs.filter(d => d.exists).map(d => [d.id, d.data()])); onMsgs(); }, err);
-    db.collection('visits').onSnapshot(s => { CLOUD.visits = new Map(s.docs.filter(d => d.exists).map(d => [d.id, d.data()])); onVisits(); }, err);
+    DATA.watchDoc('site/room302', d => { CLOUD.site = d; onSite(); }, err);
+    DATA.watchCollection('rooms', m => { CLOUD.rooms = m; onRooms(); }, err);
+    DATA.watchCollection('msgs', m => { CLOUD.msgs = m; onMsgs(); }, err);
+    DATA.watchCollection('visits', m => { CLOUD.visits = m; onVisits(); }, err);
     for (let i = RESIDENTS.length - 1; i >= 0; i--) if (RESIDENTS[i].custom) RESIDENTS.splice(i, 1);
     syncChrome();
   } catch (e) { console.warn('cloud unavailable', e); }
@@ -1966,10 +2016,10 @@ function myRoomKey() { if (!CLOUD.ready) return null; if (CLOUD.isOwner) return 
 function myResident() { const k = myRoomKey(); if (!k) return null; return k === '302' ? RESIDENTS.find(r => r.preset === 'mine') : RESIDENTS.find(r => r.real && r.key === k); }
 function ownerHandle302() { const id = CLOUD.site && CLOUD.site.ownerId; return (id && NAMES.get(id)) || '老板'; }
 async function resolveNames(ids) {
-  if (!CLOUD.user) return;
+  if (!CLOUD.ready) return;
   const need = [...new Set(ids)].filter(id => id && !NAMES.has(id));
   if (!need.length) return;
-  try { const ps = await CLOUD.user.profiles(need); need.forEach(id => NAMES.set(id, (ps[id] && ps[id].name) || '')); } catch (e) {}
+  try { const ps = await DATA.profiles(need); need.forEach(id => NAMES.set(id, (ps[id] && ps[id].name) || '')); } catch (e) {}
 }
 function nameOfUid(uid) {
   if (CLOUD.ready && uid === CLOUD.me.id) return '你';
@@ -2185,7 +2235,7 @@ function updatesSentence(u) {
 async function markSeen() {
   if (!CLOUD.ready) return;
   CLOUD.lastSeen = Date.now(); syncChrome();
-  try { await CLOUD.db.doc(`data/users/${CLOUD.me.id}/state`).set({ lastSeen: CLOUD.lastSeen }); } catch (e) {}
+  try { await DATA.set(`data/users/${CLOUD.me.id}/state`, { lastSeen: CLOUD.lastSeen }); } catch (e) {}
 }
 function hasReply(key, m) { return roomMessages(key).some(x => x.reply && x.reply.id === m.id); }
 function pendingFor(key) { const me = CLOUD.me && CLOUD.me.id; return roomMessages(key).filter(m => !m.reply && m.author !== me && !hasReply(key, m)); }
@@ -2246,7 +2296,7 @@ async function saveWork(path, title, html) {
 async function loadWork(path) {
   if (path.startsWith('local:')) return store.get('gebi3.work.' + path.slice(6), null);
   if (!CLOUD.ready || !WORK_RE.test(path)) return null;
-  try { const s = await CLOUD.db.doc(path).get(); return s.exists ? String(s.data().html || '') : null; } catch (e) { return null; }
+  try { const d = await DATA.get(path); return d ? String(d.html || '') : null; } catch (e) { return null; }
 }
 function kb(n) { return n < 1024 ? n + ' B' : (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KB'; }
 
@@ -2307,9 +2357,10 @@ async function openShare() {
   });
   $('#saveCard').addEventListener('click', async () => {
     const note = $('#saveNote');
-    let dl = null; try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) {}
-    if (!dl) { note.textContent = '这里不能直接保存，右键或长按图片另存。'; return; }
-    try { await dl.save({ filename: `隔壁-${S.room.no}-${S.room.name}.png`, data: blob }); note.textContent = '已保存'; }
+    try {
+      if (!await DATA.save(`隔壁-${S.room.no}-${S.room.name}.png`, blob)) { note.textContent = '这里不能直接保存，右键或长按图片另存。'; return; }
+      note.textContent = '已保存';
+    }
     catch (e) { const c = e && e.code; note.textContent = c === 'declined' ? '' : c === 'rate_limited' ? '保存框已经打开了' : '这里不能直接保存，右键或长按图片另存。'; }
   });
 }
@@ -4172,11 +4223,11 @@ async function loadPocket() {
   POCKET.items = cleanPocket(store.get('gebi.pocket', []));
   if (!CLOUD.ready || !canPost()) { syncPocketBtn(); return; }
   try {
-    const s = await CLOUD.db.doc(pocketPath()).get();
-    const remote = s.exists ? cleanPocket(s.data().items) : [];
+    const d = await DATA.get(pocketPath());
+    const remote = d ? cleanPocket(d.items) : [];
     const merged = remote.concat(POCKET.items.filter(p => !remote.some(q => q.key === p.key && q.e.title === p.e.title)));
     POCKET.items = merged.slice(-POCKET_MAX); POCKET.cloud = true;
-    if (merged.length !== remote.length) { await CLOUD.db.doc(pocketPath()).set({ items: POCKET.items, updatedAt: Date.now() }); }
+    if (merged.length !== remote.length) { await DATA.set(pocketPath(), { items: POCKET.items, updatedAt: Date.now() }); }
     store.set('gebi.pocket', []);
   } catch (e) { /* 读不到就只用本机的口袋 */ }
   syncPocketBtn();
@@ -4574,11 +4625,6 @@ async function idbDo(mode, fn) {
   const d = await idb();
   return new Promise((res, rej) => { const tx = d.transaction('blobs', mode), q = fn(tx.objectStore('blobs')); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); });
 }
-function artAssets() {
-  if (!CLOUD.ready || !window.claude || !window.claude.use) return Promise.resolve(null);
-  if (!CLOUD.assetsP) CLOUD.assetsP = window.claude.use('assets').catch(() => null);
-  return CLOUD.assetsP;
-}
 function artErr(msg) { const e = new Error(msg); e.friendly = true; return e; }
 const rid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -4595,12 +4641,12 @@ function assetType(name, type) {
 async function putBlob(blob, type) {
   if (blob.size > ART_ASSET_MAX) throw artErr(`文件有 ${mb(blob.size)}，超过了 20 MB。压缩一下，或者把它放到网上后用链接发布。`);
   if (!CLOUD.ready) { const k = rid('local:a'); await idbDo('readwrite', s => s.put(blob, k)); return k; }
-  const assets = await artAssets();
-  if (!assets) throw artErr('这个页面还不能上传文件：需要房主在发布页面时开启文件上传（assets 能力）。');
-  try { return (await assets.upload(blob, { type })).id; }
+  const noUpload = () => artErr('这个页面还不能上传文件：需要房主在发布页面时开启文件上传（assets 能力）。');
+  try { const id = await DATA.upload(blob, type); if (!id) throw noUpload(); return id; }
   catch (e) {
+    if (e && e.friendly) throw e;
     const c = e && e.code;
-    if (c === 'store_unavailable') { try { return (await assets.upload(blob, { type })).id; } catch (x) {} }
+    if (c === 'store_unavailable') { try { const id = await DATA.upload(blob, type); if (id) return id; } catch (x) {} }
     throw artErr(c === 'unsupported_type' || c === 'invalid_request' ? '这种文件不能直接上传。换成常见格式，或者打包成 .zip 当作项目发布。' : c === 'quota_exceeded' ? '社区的文件空间满了，请联系房主清理。' : '上传没成功，稍后再试一次。');
   }
 }
@@ -4622,7 +4668,7 @@ async function artUrl(art) {
   if (!art) return '';
   if (art.url) return art.url;
   const key = art.asset || art.work; if (!key) return '';
-  if (art.asset && !art.asset.startsWith('local:')) return '/_blob/' + art.asset;
+  if (art.asset && !art.asset.startsWith('local:')) return DATA.fileUrl(art.asset);
   if (ART_URLS.has(key)) return ART_URLS.get(key);
   const b = art.asset ? await idbDo('readonly', s => s.get(art.asset)).catch(() => null) : await loadDbBlob(art.work);
   const u = b ? URL.createObjectURL(b) : '';
@@ -4638,7 +4684,7 @@ async function saveArtDoc(path, doc) {
 async function loadArtDoc(path) {
   if (path.startsWith('local:')) return store.get('gebi3.work.' + path.slice(6), null);
   if (!CLOUD.ready || !WORK_RE.test(path)) return null;
-  try { const s = await CLOUD.db.doc(path).get(); return s.exists ? s.data() : null; } catch (e) { return null; }
+  try { return await DATA.get(path); } catch (e) { return null; }
 }
 async function loadArtText(art) {
   if (art.work) { const d = await loadArtDoc(art.work); return d ? String(d.text || '') : null; }
@@ -5301,8 +5347,7 @@ async function artDownload(e) {
   const art = e.art, u = await artUrl(art), name = art.name || (e.title || 'file');
   if (!u) return toast('文件没找到');
   try {
-    const dl = CLOUD.ready && window.claude && window.claude.use ? await window.claude.use('downloads') : null;
-    if (dl) { const b = await (await fetch(u)).blob(); await dl.save({ filename: name, data: b }); return; }
+    if (CLOUD.ready && DATA.available()) { const b = await (await fetch(u)).blob(); if (await DATA.save(name, b)) return; }
   } catch (x) { if (x && x.code === 'declined') return; }
   const a = document.createElement('a'); a.href = u; a.download = name; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
 }
@@ -5514,7 +5559,7 @@ async function openPublish(seed) {
   if (seed) await pubAdd(seed); else renderPublish();
 }
 async function pubGoHome() {
-  if (window.claude && window.claude.use) for (let i = 0; i < 30 && !CLOUD.ready; i++) await sleep(200);
+  if (DATA.available()) for (let i = 0; i < 30 && !CLOUD.ready; i++) await sleep(200);
   const r = CLOUD.ready ? myResident() : RESIDENTS.find(x => x.preset === 'mine');
   if (!r) { toast('先在地球上选址入住，入住后再发布作品', 4600); return false; }
   for (let i = 0; i < 40 && S.busy; i++) await sleep(150);
@@ -6056,8 +6101,8 @@ async function boot() {
   }
   pubFromHash();
   try {
-    if (window.claude && window.claude.use) {
-      const s = await window.claude.use('sample');
+    {
+      const s = await DATA.sample();
       if (s) { S.sample = s; try { const lim = await s.limits(); S.sampleTools = !!(lim && lim.tools); } catch (e) {} updateAgentStatus(); }
     }
   } catch (e) {}

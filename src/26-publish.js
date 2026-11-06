@@ -125,7 +125,7 @@ async function openPublish(seed) {
   if (seed) await pubAdd(seed); else renderPublish();
 }
 async function pubGoHome() {
-  if (window.claude && window.claude.use) for (let i = 0; i < 30 && !CLOUD.ready; i++) await sleep(200);
+  if (DATA.available()) for (let i = 0; i < 30 && !CLOUD.ready; i++) await sleep(200);
   const r = CLOUD.ready ? myResident() : RESIDENTS.find(x => x.preset === 'mine');
   if (!r) { toast('先在地球上选址入住，入住后再发布作品', 4600); return false; }
   for (let i = 0; i < 40 && S.busy; i++) await sleep(150);
