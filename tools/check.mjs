@@ -20,6 +20,9 @@ const app = read('app.js');
 try { new Function(app); } catch (e) { err('app.js', '语法错误：' + e.message); }
 const SRC = readdirSync(join(ROOT, 'src')).filter(n => n.endsWith('.js')).sort().map(n => `src/${n}`);
 for (const f of SRC) { try { new Function(read(f)); } catch (e) { err(f, '语法错误：' + e.message); } }
+// 只有数据层能直接调用平台，换后端时只改这一个文件（docs/ARCHITECTURE.md「数据层」）
+const DATA_LAYER = 'src/12-cloud-data.js';
+for (const f of SRC) if (f !== DATA_LAYER) { const t = read(f), i = t.search(/window\.claude|\bclaude\.use\(|CLOUD\.(db|user)\b/); if (i >= 0) err(f, `第 ${lineOf(t, i)} 行直接调用了平台，请改用 ${DATA_LAYER} 里的 DATA`); }
 
 /* 2. 所有 var(--x) 都在 tokens.css 里定义（--c、--tc 是按数据传入的局部变量） */
 const tokensCss = read('styles/tokens.css');

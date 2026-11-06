@@ -16,11 +16,6 @@ async function idbDo(mode, fn) {
   const d = await idb();
   return new Promise((res, rej) => { const tx = d.transaction('blobs', mode), q = fn(tx.objectStore('blobs')); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); });
 }
-function artAssets() {
-  if (!CLOUD.ready || !window.claude || !window.claude.use) return Promise.resolve(null);
-  if (!CLOUD.assetsP) CLOUD.assetsP = window.claude.use('assets').catch(() => null);
-  return CLOUD.assetsP;
-}
 function artErr(msg) { const e = new Error(msg); e.friendly = true; return e; }
 const rid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -37,12 +32,12 @@ function assetType(name, type) {
 async function putBlob(blob, type) {
   if (blob.size > ART_ASSET_MAX) throw artErr(`文件有 ${mb(blob.size)}，超过了 20 MB。压缩一下，或者把它放到网上后用链接发布。`);
   if (!CLOUD.ready) { const k = rid('local:a'); await idbDo('readwrite', s => s.put(blob, k)); return k; }
-  const assets = await artAssets();
-  if (!assets) throw artErr('这个页面还不能上传文件：需要房主在发布页面时开启文件上传（assets 能力）。');
-  try { return (await assets.upload(blob, { type })).id; }
+  const noUpload = () => artErr('这个页面还不能上传文件：需要房主在发布页面时开启文件上传（assets 能力）。');
+  try { const id = await DATA.upload(blob, type); if (!id) throw noUpload(); return id; }
   catch (e) {
+    if (e && e.friendly) throw e;
     const c = e && e.code;
-    if (c === 'store_unavailable') { try { return (await assets.upload(blob, { type })).id; } catch (x) {} }
+    if (c === 'store_unavailable') { try { const id = await DATA.upload(blob, type); if (id) return id; } catch (x) {} }
     throw artErr(c === 'unsupported_type' || c === 'invalid_request' ? '这种文件不能直接上传。换成常见格式，或者打包成 .zip 当作项目发布。' : c === 'quota_exceeded' ? '社区的文件空间满了，请联系房主清理。' : '上传没成功，稍后再试一次。');
   }
 }
@@ -64,7 +59,7 @@ async function artUrl(art) {
   if (!art) return '';
   if (art.url) return art.url;
   const key = art.asset || art.work; if (!key) return '';
-  if (art.asset && !art.asset.startsWith('local:')) return '/_blob/' + art.asset;
+  if (art.asset && !art.asset.startsWith('local:')) return DATA.fileUrl(art.asset);
   if (ART_URLS.has(key)) return ART_URLS.get(key);
   const b = art.asset ? await idbDo('readonly', s => s.get(art.asset)).catch(() => null) : await loadDbBlob(art.work);
   const u = b ? URL.createObjectURL(b) : '';
@@ -80,7 +75,7 @@ async function saveArtDoc(path, doc) {
 async function loadArtDoc(path) {
   if (path.startsWith('local:')) return store.get('gebi3.work.' + path.slice(6), null);
   if (!CLOUD.ready || !WORK_RE.test(path)) return null;
-  try { const s = await CLOUD.db.doc(path).get(); return s.exists ? s.data() : null; } catch (e) { return null; }
+  try { return await DATA.get(path); } catch (e) { return null; }
 }
 async function loadArtText(art) {
   if (art.work) { const d = await loadArtDoc(art.work); return d ? String(d.text || '') : null; }

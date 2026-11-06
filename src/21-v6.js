@@ -19,11 +19,11 @@ async function loadPocket() {
   POCKET.items = cleanPocket(store.get('gebi.pocket', []));
   if (!CLOUD.ready || !canPost()) { syncPocketBtn(); return; }
   try {
-    const s = await CLOUD.db.doc(pocketPath()).get();
-    const remote = s.exists ? cleanPocket(s.data().items) : [];
+    const d = await DATA.get(pocketPath());
+    const remote = d ? cleanPocket(d.items) : [];
     const merged = remote.concat(POCKET.items.filter(p => !remote.some(q => q.key === p.key && q.e.title === p.e.title)));
     POCKET.items = merged.slice(-POCKET_MAX); POCKET.cloud = true;
-    if (merged.length !== remote.length) { await CLOUD.db.doc(pocketPath()).set({ items: POCKET.items, updatedAt: Date.now() }); }
+    if (merged.length !== remote.length) { await DATA.set(pocketPath(), { items: POCKET.items, updatedAt: Date.now() }); }
     store.set('gebi.pocket', []);
   } catch (e) { /* 读不到就只用本机的口袋 */ }
   syncPocketBtn();

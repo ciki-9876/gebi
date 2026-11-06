@@ -12,7 +12,7 @@
 
 ## 代码结构
 
-源码在 `src/` 下，按区块拆成 30 个文件，文件名前的编号就是加载顺序。`tools/build.mjs` 把它们按顺序拼接、包进一个 IIFE，生成 `app.js`，页面加载的是 `app.js`。
+源码在 `src/` 下，按区块拆成 31 个文件，文件名前的编号就是加载顺序。`tools/build.mjs` 把它们按顺序拼接、包进一个 IIFE，生成 `app.js`，页面加载的是 `app.js`。
 
 - **只改 `src/`，不要直接改 `app.js`。** 改完运行 `node tools/build.mjs`，把 `src/` 和 `app.js` 一起提交。`node tools/check.mjs` 会检查两者是否同步。
 - `dev/serve.py` 每次请求 `app.js` 都会自动重新生成，本地改完刷新页面即可。
@@ -34,6 +34,7 @@
 | `09-room-build.js` | 房间搭建：可以走进去的封闭房间 |
 | `10-controls.js` | 第一人称控制、装修时的娃娃屋相机 |
 | `11-globe.js` | 地球点阵、住户标签、连线、选址；状态 `G` |
+| `12-cloud-data.js` | 数据层 `DATA`：**唯一和平台打交道的文件**（数据库、账号、文件上传、下载、模型调用）。别的文件一律通过 `DATA` 读写，不直接用 `window.claude`。换后端只改这一个文件，接口见下方“数据层” |
 | `12-cloud.js` | `CLOUD` 状态、`initCloud()`、读写封装 `cloudWrite()`、清洗函数 `clean*()`；留言、来访、动态、访客簿、托管作品、分享卡片 |
 | `13-overlays.js` | 3D 热点、地球标签、轨道动态 `layoutOrbit()`、控制台小屏 `syncHomeLcd()` |
 | `14-home.js` | 地球首页界面、搜索 |
@@ -122,11 +123,31 @@ function openSomething(r) {
 - 只接受 `gebi: 1` 的消息；外链作品的消息还要校验 origin。
 - 不在页面里放任何密钥。Bit 的对话走 `sample` 能力，不需要 API Key。
 
+## 数据层 `DATA`
+
+`src/12-cloud-data.js` 是页面里唯一调用 `window.claude` 的地方。`node tools/check.mjs` 会拦住其他文件里的 `window.claude`。
+
+| 接口 | 说明 |
+| --- | --- |
+| `available()` | 有没有平台。没有时页面退回浏览器本地存储 |
+| `connect()` | 登录并连上数据库，返回 `{ id, isOwner, canWrite }`；连不上返回 `null` |
+| `get(path)` | 读一个文档，不存在返回 `null`，出错抛出 |
+| `set(path, body)` | 整个覆盖写入。失败时抛出带 `code` 的错误：`invalid_argument`（没有写权限）、`quota_exceeded`、`resource_exhausted`、`revoked`，`cloudWrite()` 靠它们给提示 |
+| `watchDoc(path, cb, onErr)` | 订阅一个文档，`cb(data 或 null)` |
+| `watchCollection(path, cb, onErr)` | 订阅一个集合的直接子文档，`cb(Map<id, data>)` |
+| `profiles(ids)` | 用户 id 到 `{ name }` |
+| `upload(blob, type)` | 上传文件，返回文件 id；不能上传时返回 `null`，失败抛出带 `code` 的错误（`unsupported_type`、`quota_exceeded`、`store_unavailable` 等） |
+| `fileUrl(id)` | 文件 id 到可以直接加载的地址 |
+| `save(filename, data)` | 让浏览者保存文件：`true` 已保存，`false` 平台不支持（调用方退回普通下载），取消时抛出 `declined` |
+| `sample()` | 房间里的 Bit 用的模型调用 |
+
+换后端（第 3 阶段）时：重写这个文件，保持上面的接口和错误 `code`；路径格式（`rooms/<uid>/works/<id>` 这类偶数段文档、奇数段集合）和权限规则（见上方数据模型）照搬到新后端。
+
 ## 迁移路线（面向公众前要做）
 
 | 阶段 | 内容 |
 | --- | --- |
 | 1 | 拆分 `app.js` 为 ES 模块（scene / globe / cloud / panels / windows / build / community），引入一个零配置打包（esbuild）。规则不变。**已完成第一步**：按区块拆到 `src/`，用拼接生成 `app.js`，还没有改成 ES 模块。 |
-| 2 | 抽出数据访问层：所有 `CLOUD.db` 调用集中到一个 `store` 模块，接口保持 `get / set / onSnapshot`。 |
+| 2 | 抽出数据访问层。**已完成**：所有平台调用集中到 `src/12-cloud-data.js` 的 `DATA`（没有叫 `store`，因为 `store` 已经是本地存储的工具函数），接口见上方“数据层”。 |
 | 3 | 换成自己的后端（账号、房间、留言、来访、托管作品），实现同一套接口；Artifact 版本保留为演示环境。 |
 | 4 | 托管作品迁到独立域名，用真正的跨源隔离替代 `srcdoc`。 |
