@@ -54,6 +54,8 @@ function animateCommon(dt) {
 }
 function frame(now) {
   if (!running) return;
+  if (HALL.on && !HALL.three) return;          // 只看展品列表时不渲染 3D
+  if (HALL.on && HALL.listOpen) { last = now; raf = requestAnimationFrame(frame); return; }   // 列表盖住画面时先不画，省电
   const dt = Math.min(.05, (now - last) / 1000); last = now; T += dt;
   if (S.view === 'globe') updateGlobe(dt, T);
   else { animateRoom(dt); updateRoomCamera(dt); if (FP.locked) crosshairPick(); }

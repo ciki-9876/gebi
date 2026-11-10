@@ -47,9 +47,11 @@ function syncChrome() {
   if (S.mode === 'build') renderPendingRow();
   renderGuide();
   syncDock();
+  if (HALL.on) hallChrome();
 }
 function syncDock() { /* the stats dock sits under the top bar, nothing to shift */ }
 async function setMode(m) {
+  if (HALL.on) return;                       // 展厅里没有装修和出门
   if (m === 'globe') return exitToGlobe();
   if (S.view !== 'room' || (S.busy && !S.room)) return;
   if (m === 'build' && !(S.room && S.room.mine)) { toast(`这是 ${S.room.owner} 的房间，只有房主能动手布置`); return; }

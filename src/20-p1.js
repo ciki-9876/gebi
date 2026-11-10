@@ -5,7 +5,7 @@
 /* ---------- 收藏与改编 ---------- */
 const CURATE_NO = ['agent', 'guestbook', 'door', 'view', 'music'];
 function originHTML(e) { return e && e.from && residentOfKey(e.from.room) ? `<button type="button" class="btn ghost" data-act="author">去 ${esc(e.from.by || 'TA')} 的房间</button>` : ''; }
-function curateOK(e) { return !!(e && !CURATE_NO.includes(e.kind) && S.room && !S.room.mine && S.view === 'room' && embedSource(e)); }
+function curateOK(e) { return !!(e && !CURATE_NO.includes(e.kind) && S.room && !S.room.mine && !S.room.hall && S.view === 'room' && embedSource(e)); }
 function curateHTML(e) {
   let h = '';
   if (curateOK(e)) h += '<button type="button" class="btn" data-act="collect">☆ 收藏到我的房间</button><button type="button" class="btn" data-act="adapt">改编一份</button>';

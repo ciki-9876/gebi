@@ -23,6 +23,14 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP
 - **发布任何 AI 产物**：点房间里的“发布作品”，或者直接把文件拖进房间。网页、文档、图片、视频、音频、PDF、3D 模型、数据、整个项目都能发布。作品先归到展示类别（网页、游戏、图片、影像、声音、阅读、代码、数据、立体、文件），再放进这一类的物件，比如图片进相框、视频上投影幕、数据画在看板上；物件库也按类别分页。房间里的 Bit 可以帮忙写名称和介绍。用户也可以把“发布说明”发给自己的 AI，或者装上 `tools/gebi-publish.mjs`（MCP），由 AI 打包好链接或文件。协议见 `docs/PUBLISH.md`。
 - **方案书**：页面右上角“方案书”是完整的产品设计方案。
 
+## 展厅模式（线上活动）
+
+在地址后面加 `?hall`，页面就变成一间线上活动展厅：每个展位是一件能直接上手的作品，能看到其他人在场、谁在玩哪一件，能在全场聊天，玩过之后给作者写反馈，评满 3 件别人的作品才能看到自己收到的反馈。手机上默认是列表页。
+
+本地预览：`python3 dev/serve.py --mock`，打开 `http://127.0.0.1:8765/preview.html?hall=1&uid=u_a&owner=0`；换一个 `uid` 再开一个标签页就是第二个人。
+
+现在是一场演示：六件展品、它们的作者、示例反馈和“演示访客”都是演示数据，界面上都有标注。数据约定和已知限制见 `docs/ARCHITECTURE.md`「展厅模式」。
+
 ## 目录
 
 | 路径 | 说明 |
@@ -30,7 +38,7 @@ https://claude.ai/artifact/LWAStw84ruoEsCPAvfHYEP
 | `index.html` | 页面结构与方案书（Artifact 页面片段，发布时由平台包上 `<!doctype>` 骨架） |
 | `styles/` | 设计系统：`tokens.css`（全部 token，事实来源）、`base.css`、`components.css`、`app.css` |
 | `design-system/project/` | 设计系统页面的源文件：品牌手册、组件说明与预览；`tokens.json` 和 `bundle.css` 由 `tools/sync-tokens.mjs` 生成 |
-| `src/` | 全部逻辑的源码，按区块拆成 25 个文件：Three.js 场景、地球、第一人称控制、房间与家具、窗口与 SDK、Agent、社区数据。文件清单见 `docs/ARCHITECTURE.md` |
+| `src/` | 全部逻辑的源码，按区块拆成 34 个文件：Three.js 场景、地球、第一人称控制、房间与家具、窗口与 SDK、Agent、社区数据。文件清单见 `docs/ARCHITECTURE.md` |
 | `app.js` | 生成文件，由 `tools/build.mjs` 把 `src/` 拼接而成，页面加载的是它。不要直接修改 |
 | `tools/build.mjs` | 把 `src/` 拼接成 `app.js` |
 | `assets/land.txt` | 地球点阵数据（base64），由 `tools/mkland.py` 生成 |

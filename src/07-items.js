@@ -233,7 +233,7 @@ function kioskCanvas(entry, cw = 384, ch = 232) {
   const lines = wrapText(g, entry.title || '未命名作品', w - 40, 2);
   lines.forEach((l, i) => g.fillText(l, 20, 100 + i * 42));
   g.font = '15px ' + FONT.mono; g.fillStyle = 'rgba(255,255,255,.75)';
-  let host = entry.work ? '隔壁托管 · 单文件作品' : '还没绑定地址';
+  let host = entry.hall === 'booth' ? '作者 ' + (entry.hby || '') : entry.hall ? '' : entry.work ? '隔壁托管 · 单文件作品' : '还没绑定地址';
   if (!entry.work && validUrl(entry.url)) { try { host = new URL(entry.url).host; } catch (e) {} }
   g.fillText(host, 20, h - 22);
   if (entry.from) {

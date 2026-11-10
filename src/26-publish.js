@@ -334,6 +334,7 @@ addEventListener('dragover', ev => { if (ev.dataTransfer && [...ev.dataTransfer.
 addEventListener('drop', ev => {
   if (!ev.dataTransfer || !ev.dataTransfer.files.length) return;
   ev.preventDefault();
+  if (HALL.on) { toast('想把作品摆进展厅，点“报名参展”再选这个文件'); return; }
   if (S.view === 'room' && S.room && S.room.mine) openPublish({ files: ev.dataTransfer.files });
   else toast('回到自己的房间，再把作品拖进来');
 });

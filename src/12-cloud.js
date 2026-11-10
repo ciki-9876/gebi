@@ -329,6 +329,7 @@ async function saveWork(path, title, html) {
   await cloudWrite(path, { title: String(title).slice(0, 30), html, bytes: html.length, updatedAt: Date.now() });
 }
 async function loadWork(path) {
+  if (path.startsWith('hall:')) return hallWork(path.slice(5));
   if (path.startsWith('local:')) return store.get('gebi3.work.' + path.slice(6), null);
   if (!CLOUD.ready || !WORK_RE.test(path)) return null;
   try { const d = await DATA.get(path); return d ? String(d.html || '') : null; } catch (e) { return null; }

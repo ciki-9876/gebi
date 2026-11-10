@@ -52,7 +52,7 @@ function walkTo(g, opts = {}) {
   const dist = Math.hypot(v.pos.x - FP.pos.x, v.pos.z - FP.pos.z);
   return fpGo(v.pos, yaw, a.pitch, clamp(.55 + dist / 3.4, .6, 2.2));
 }
-function focusOn(g, opts = {}) { if (S.view === 'room' && S.mode !== 'build') walkTo(g, { panel: opts.panel !== false }); }
+function focusOn(g, opts = {}) { if (g && g.userData.fake) return; if (S.view === 'room' && S.mode !== 'build') walkTo(g, { panel: opts.panel !== false }); }
 function setView() { /* camera framing is handled by the first-person controller */ }
 function fpUpdate(dt) {
   if (FP.auto) {
