@@ -39,6 +39,7 @@ function bindFooter(g) {
 }
 function activate(g) {
   const e = entryOf(g); if (!e) return;
+  if (S.room && S.room.hall && hallActivate(g, e)) return;
   if (!['door', 'view'].includes(e.kind) && S.room) recordVisit(roomKey(S.room), e.title || nameOf(g));
   bubble.hidden = true;
   switch (e.kind) {

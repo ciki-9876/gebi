@@ -624,3 +624,38 @@ pre.code .c { color: var(--text-3); } pre.code .s { color: var(--accent-text); }
 /* ---------- 物件库的分类（src/19-chrome.js） ---------- */
 .cat-tabs { margin: 0 2px var(--sp-2); overflow-x: auto; flex-wrap: nowrap; max-width: 100%; }
 .cat-tabs button { flex: none; }
+
+/* ============================================================
+   展厅模式（body[data-hall]）：一场线上活动的展厅
+   ============================================================ */
+body[data-hall] #home, body[data-hall] #glabels, body[data-hall] #ghud, body[data-hall] #gbanner, body[data-hall] #modes, body[data-hall] #themeBtn, body[data-hall] #openPlan, body[data-hall] #bell, body[data-hall] #stats, body[data-hall] #bubble { display: none !important; }
+body[data-hall][data-view="lite"] #porthole, body[data-hall][data-view="lite"] #guide, body[data-hall][data-view="lite"] #ctlHint, body[data-hall][data-view="lite"] #joy, body[data-hall][data-view="lite"] #hotspots, body[data-hall][data-view="lite"] .xhair, body[data-hall][data-view="lite"] #dock, body[data-hall].hall-list #guide, body[data-hall].hall-list #ctlHint, body[data-hall].hall-list #joy { display: none !important; }
+body[data-hall] .hs span { opacity: 1; transform: translateX(-50%); }
+body[data-hall] .hs.live span { color: var(--success); }
+body[data-hall].hall-list .taskbar, body[data-hall][data-view="lite"] .taskbar { display: none; }
+.hall-stats { max-width: min(760px, calc(100vw - 32px)); }
+
+/* 头顶的名字 */
+.hall-tags { position: fixed; inset: 0; z-index: var(--z-hud); pointer-events: none; overflow: hidden; }
+.hall-tag { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; white-space: nowrap; padding: 3px var(--sp-2); border-radius: var(--r-sm); background: var(--glass); box-shadow: var(--highlight); font-size: var(--fs-xs); color: var(--text-2); opacity: 0; transition: opacity var(--dur-2); will-change: transform; }
+.hall-tag i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); flex: none; }
+.hall-tag b { color: var(--text-1); font-weight: var(--fw-semibold); }
+
+/* 全场聊天：一块舱板，里面一块小屏 */
+.hall-chat { position: fixed; z-index: var(--z-guide); left: var(--gutter); bottom: calc(env(safe-area-inset-bottom, 0px) + 76px); width: 300px; display: grid; gap: var(--sp-2); padding: var(--sp-3); border-radius: var(--r-lg); background: var(--grain), var(--surface-1); box-shadow: var(--plate-edge); }
+.hall-chat-log { height: 128px; overflow: auto; padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--scanline), var(--screen); box-shadow: var(--recess); font-size: var(--fs-sm); line-height: var(--lh-body); color: var(--screen-text); }
+.hall-chat-log p { margin: 0; overflow-wrap: anywhere; }
+.hall-chat-log b { color: var(--c, var(--screen-bright)); font-weight: var(--fw-medium); margin-right: 6px; }
+.hall-chat-log .sys { color: var(--screen-dim); }
+
+/* 展品列表：盖在 3D 画面上，面板和作品窗口仍然在它上面 */
+.hall-lite { position: fixed; z-index: var(--z-buildbar); inset: calc(env(safe-area-inset-top, 0px) + var(--frame-top)) 0 0 0; overflow: auto; background: var(--grain), var(--bg); padding: var(--sp-6) var(--gutter) var(--sp-12); }
+.hall-lite-act { display: flex; flex-wrap: wrap; gap: var(--sp-2); justify-content: flex-end; max-width: 420px; }
+.hall-lite .hall-chat { position: static; width: auto; max-width: 1180px; margin: var(--sp-6) auto 0; }
+.hall-report { white-space: pre-wrap; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md); background: var(--screen); box-shadow: var(--recess); color: var(--screen-text); font-size: var(--fs-md); line-height: var(--lh-loose); }
+@media (max-width: 760px) {
+  .hall-chat { display: none; }
+  .hall-lite .hall-chat { display: grid; }
+  .hall-lite .of-h { flex-direction: column; }
+  .hall-lite-act { justify-content: flex-start; max-width: none; }
+}

@@ -16,6 +16,7 @@ function loadLand(onProgress) {
 async function boot() {
   const bar = $('#loadBar'), pct = $('#loadPct');
   const prog = v => { bar.style.transform = `scaleX(${v.toFixed(3)})`; pct.textContent = Math.round(v * 100) + '%'; };
+  if (HALL.on) return hallBoot(prog);          // 展厅模式：不加载地球，直接进展厅
   let buf;
   try {
     const fontP = Promise.race([Promise.all([`120px ${FONT.neon}`, `38px ${FONT.chalk}`, `14px ${FONT.body}`, `700 28px ${FONT.body}`, `13px ${FONT.mono}`, `40px ${FONT.disp}`].map(f => document.fonts.load(f, '拾光今天待办访客留言零点特调霓虹贪吃蛇隔壁MIDNIGHT302'))), sleep(2600)]).catch(() => {});

@@ -39,6 +39,7 @@ async function arriveInRoom(room, opts = {}) {
   if (room.agent && !opts.build) setTimeout(() => { if (S.view === 'room' && S.mode === 'visit' && !S.panel && !S.busy) bubble.hidden = false; }, 900);
 }
 async function exitToGlobe() {
+  if (HALL.on) { hallLobby(); return; }       // 展厅没有地球可回
   if (S.busy || S.view !== 'room') return; S.busy = true;
   tip.hidden = true; bubble.hidden = true; closePanel(true); closeAllWins();
   if (FP.locked && document.exitPointerLock) document.exitPointerLock();

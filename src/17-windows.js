@@ -128,7 +128,7 @@ const WICON = {
 };
 function embedSource(e) {
   if (!e) return null;
-  if (e.work && (e.work.startsWith('local:') || WORK_RE.test(e.work))) return { hosted: e.work, external: false };
+  if (e.work && (e.work.startsWith('local:') || e.work.startsWith('hall:') || WORK_RE.test(e.work))) return { hosted: e.work, external: false };
   if (validUrl(e.url)) return { src: e.url.trim(), external: true };
   if (DEMOS[e.kind]) return { srcdoc: DEMOS[e.kind], external: false };
   return null;
@@ -153,13 +153,13 @@ function createWin(g, e) {
   const kc = KIND_COLOR[e.kind] || KIND_COLOR.link;
   let host = '内置示例', origin = '*';
   if (src.external) { try { const u = new URL(src.src); host = u.host; origin = u.origin; } catch (x) {} }
-  if (src.hosted) host = '隔壁托管' + (e.workBytes ? ' · ' + kb(e.workBytes) : '');
+  if (src.hosted) host = e.hall === 'booth' ? '作者 ' + (e.hby || '') : '隔壁托管' + (e.workBytes ? ' · ' + kb(e.workBytes) : '');
   if (e.from) host += ` · ${e.from.adapted ? '改编自' : '收藏自'} ${e.from.by || '邻居'}`;
   const el = document.createElement('section');
   el.className = 'win ' + size; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', e.title || '作品');
   el.innerHTML = `<header class="win-bar"><i class="win-dot" style="background:linear-gradient(135deg,${kc[0]},${kc[1]})"></i>
     <div class="win-t"><b>${esc(e.title || '作品')}</b><span class="win-sub"><span class="win-host">${esc(host)}</span><button type="button" class="win-sdk" data-a="sdk" disabled>连接中</button></span></div>
-    <div class="win-act">${curateOK(e) ? '<button type="button" class="win-get" data-a="collect">☆ 收藏</button><button type="button" class="win-get" data-a="adapt">改编</button>' : ''}${(hasDownloads(e) || (e.kind === 'shiguang' && S.room && S.room.mine)) ? '<button type="button" class="win-get" data-a="dl" aria-expanded="false">获取客户端</button>' : ''}
+    <div class="win-act">${e.hall === 'booth' ? '<button type="button" class="win-get" data-a="hallfb">写反馈</button>' : ''}${curateOK(e) ? '<button type="button" class="win-get" data-a="collect">☆ 收藏</button><button type="button" class="win-get" data-a="adapt">改编</button>' : ''}${(hasDownloads(e) || (e.kind === 'shiguang' && S.room && S.room.mine)) ? '<button type="button" class="win-get" data-a="dl" aria-expanded="false">获取客户端</button>' : ''}
     <button type="button" class="wbtn" data-a="reload" aria-label="重新载入">${WICON.reload}</button>
     ${src.external ? `<a class="wbtn" href="${esc(src.src)}" target="_blank" rel="noopener noreferrer" aria-label="在新标签页打开">${ICON.ext}</a>` : ''}
     <button type="button" class="wbtn" data-a="min" aria-label="收起到任务栏">${WICON.min}</button>
@@ -189,6 +189,7 @@ function createWin(g, e) {
     else if (a === 'sdk') openSdkGuide();
     else if (a === 'collect') collectEntry(e);
     else if (a === 'adapt') adaptEntry(e);
+    else if (a === 'hallfb') hallFeedback(e.hid);
     else if (a === 'tab') { /* plain link */ }
     else if (a === 'always-tab') { e.open = 'tab'; saveLayout(); closeWin(w); toast('以后点这个物件会在新标签页打开'); }
   });
@@ -244,6 +245,7 @@ function toggleDl(w, btn) {
 }
 function showWin(w) {
   w.el.hidden = false; S.win = w; S.focus = w.g;
+  if (HALL.on) hallOnPlay(w);
   winBackdrop.hidden = !(w.size === 'wide' && !isNarrow());
   focusOn(w.g, { panel: w.size === 'tall', loose: true });
   renderTaskbar();
@@ -252,6 +254,7 @@ function showWin(w) {
 function minimizeWin(w, quiet) {
   if (!w) return;
   w.el.hidden = true;
+  if (HALL.on) hallOnStop(w);
   if (S.win === w) { S.win = null; S.focus = null; winBackdrop.hidden = true; if (!quiet) setView('room'); }
   renderTaskbar();
   if (!quiet && !S.minHinted) { S.minHinted = true; toast('已收起到任务栏，作品保持当前状态，点任务栏回来'); }
@@ -260,6 +263,7 @@ function closeWin(w, quiet) {
   if (!w || !WINS.has(w.iid)) return;
   w.timers.forEach(clearTimeout); clearTimeout(w.hs); if (w.onClose) w.onClose();
   w.el.remove(); WINS.delete(w.iid);
+  if (HALL.on) hallOnStop(w);
   if (game.remote === w) { game.remote = null; game.mode = 'attract'; gReset(); }
   const sc = screenOf(w.g); if (sc && sc.restore) sc.restore();
   if (S.win === w) { S.win = null; S.focus = null; winBackdrop.hidden = true; if (!quiet) setView(S.mode === 'build' ? 'build' : 'room'); }
@@ -268,7 +272,7 @@ function closeWin(w, quiet) {
 function closeAllWins() { [...WINS.values()].forEach(w => closeWin(w, true)); winBackdrop.hidden = true; }
 function renderTaskbar() {
   const list = [...WINS.values()];
-  taskbar.hidden = !list.length || S.view !== 'room';
+  taskbar.hidden = !list.length || S.view !== 'room' || (HALL.on && !!S.win);   // 展厅里窗口开着时不压在作品上
   taskbar.innerHTML = list.map(w => `<button type="button" class="task ${S.win === w ? 'on' : ''}" data-iid="${esc(w.iid)}"><i></i>${esc(w.e.title || '作品')}</button>`).join('');
   syncDock();
 }

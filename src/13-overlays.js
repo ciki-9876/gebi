@@ -29,8 +29,8 @@ function updateOverlays() {
       const s = toScreen(h.pos), behind = s.z > 1 || s.x < -40 || s.x > innerWidth + 40;
       const dist = camera.position.distanceTo(h.pos);
       const hideThis = behind || building || S.busy || (S.panel && S.panel.g && S.panel.g.userData.iid === h.iid) || (S.win && S.win.iid === h.iid) || hidePanel || (S.win && isNarrow());
-      h.el.classList.toggle('live', WINS.has(h.iid));
-      h.el.style.transform = `translate(${s.x}px,${s.y}px) translate(-50%,-50%) scale(${clamp(3.2 / dist, .55, 1.05).toFixed(3)})`;
+      h.el.classList.toggle('live', WINS.has(h.iid) || (HALL.on && hallLiveIid(h.iid)));
+      h.el.style.transform = `translate(${s.x}px,${s.y}px) translate(-50%,-50%) scale(${clamp(3.2 / dist, HALL.on ? .82 : .55, 1.05).toFixed(3)})`;
       h.el.style.opacity = hideThis ? '0' : (S.panel ? '.45' : '1');
       h.el.style.pointerEvents = hideThis ? 'none' : 'auto';
     }
@@ -39,7 +39,8 @@ function updateOverlays() {
       const s = toScreen(p), off = s.z > 1 || s.x < 60 || s.x > innerWidth - 60 || s.y < 60;
       bubble.style.left = s.x + 'px'; bubble.style.top = s.y + 'px'; bubble.style.opacity = off || S.busy ? '0' : '1'; bubble.style.pointerEvents = off ? 'none' : 'auto';
     }
-  } else updateGlobeLabels();
+    if (HALL.on) hallFrame();
+  } else if (S.view === 'globe') updateGlobeLabels();
 }
 function showTip(g, x, y) {
   const e = entryOf(g);

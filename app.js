@@ -862,7 +862,7 @@ function kioskCanvas(entry, cw = 384, ch = 232) {
   const lines = wrapText(g, entry.title || '未命名作品', w - 40, 2);
   lines.forEach((l, i) => g.fillText(l, 20, 100 + i * 42));
   g.font = '15px ' + FONT.mono; g.fillStyle = 'rgba(255,255,255,.75)';
-  let host = entry.work ? '隔壁托管 · 单文件作品' : '还没绑定地址';
+  let host = entry.hall === 'booth' ? '作者 ' + (entry.hby || '') : entry.hall ? '' : entry.work ? '隔壁托管 · 单文件作品' : '还没绑定地址';
   if (!entry.work && validUrl(entry.url)) { try { host = new URL(entry.url).host; } catch (e) {} }
   g.fillText(host, 20, h - 22);
   if (entry.from) {
@@ -1529,7 +1529,7 @@ function walkTo(g, opts = {}) {
   const dist = Math.hypot(v.pos.x - FP.pos.x, v.pos.z - FP.pos.z);
   return fpGo(v.pos, yaw, a.pitch, clamp(.55 + dist / 3.4, .6, 2.2));
 }
-function focusOn(g, opts = {}) { if (S.view === 'room' && S.mode !== 'build') walkTo(g, { panel: opts.panel !== false }); }
+function focusOn(g, opts = {}) { if (g && g.userData.fake) return; if (S.view === 'room' && S.mode !== 'build') walkTo(g, { panel: opts.panel !== false }); }
 function setView() { /* camera framing is handled by the first-person controller */ }
 function fpUpdate(dt) {
   if (FP.auto) {
@@ -2294,6 +2294,7 @@ async function saveWork(path, title, html) {
   await cloudWrite(path, { title: String(title).slice(0, 30), html, bytes: html.length, updatedAt: Date.now() });
 }
 async function loadWork(path) {
+  if (path.startsWith('hall:')) return hallWork(path.slice(5));
   if (path.startsWith('local:')) return store.get('gebi3.work.' + path.slice(6), null);
   if (!CLOUD.ready || !WORK_RE.test(path)) return null;
   try { const d = await DATA.get(path); return d ? String(d.html || '') : null; } catch (e) { return null; }
@@ -2396,8 +2397,8 @@ function updateOverlays() {
       const s = toScreen(h.pos), behind = s.z > 1 || s.x < -40 || s.x > innerWidth + 40;
       const dist = camera.position.distanceTo(h.pos);
       const hideThis = behind || building || S.busy || (S.panel && S.panel.g && S.panel.g.userData.iid === h.iid) || (S.win && S.win.iid === h.iid) || hidePanel || (S.win && isNarrow());
-      h.el.classList.toggle('live', WINS.has(h.iid));
-      h.el.style.transform = `translate(${s.x}px,${s.y}px) translate(-50%,-50%) scale(${clamp(3.2 / dist, .55, 1.05).toFixed(3)})`;
+      h.el.classList.toggle('live', WINS.has(h.iid) || (HALL.on && hallLiveIid(h.iid)));
+      h.el.style.transform = `translate(${s.x}px,${s.y}px) translate(-50%,-50%) scale(${clamp(3.2 / dist, HALL.on ? .82 : .55, 1.05).toFixed(3)})`;
       h.el.style.opacity = hideThis ? '0' : (S.panel ? '.45' : '1');
       h.el.style.pointerEvents = hideThis ? 'none' : 'auto';
     }
@@ -2406,7 +2407,8 @@ function updateOverlays() {
       const s = toScreen(p), off = s.z > 1 || s.x < 60 || s.x > innerWidth - 60 || s.y < 60;
       bubble.style.left = s.x + 'px'; bubble.style.top = s.y + 'px'; bubble.style.opacity = off || S.busy ? '0' : '1'; bubble.style.pointerEvents = off ? 'none' : 'auto';
     }
-  } else updateGlobeLabels();
+    if (HALL.on) hallFrame();
+  } else if (S.view === 'globe') updateGlobeLabels();
 }
 function showTip(g, x, y) {
   const e = entryOf(g);
@@ -2786,6 +2788,7 @@ async function arriveInRoom(room, opts = {}) {
   if (room.agent && !opts.build) setTimeout(() => { if (S.view === 'room' && S.mode === 'visit' && !S.panel && !S.busy) bubble.hidden = false; }, 900);
 }
 async function exitToGlobe() {
+  if (HALL.on) { hallLobby(); return; }       // 展厅没有地球可回
   if (S.busy || S.view !== 'room') return; S.busy = true;
   tip.hidden = true; bubble.hidden = true; closePanel(true); closeAllWins();
   if (FP.locked && document.exitPointerLock) document.exitPointerLock();
@@ -2881,6 +2884,7 @@ function bindFooter(g) {
 }
 function activate(g) {
   const e = entryOf(g); if (!e) return;
+  if (S.room && S.room.hall && hallActivate(g, e)) return;
   if (!['door', 'view'].includes(e.kind) && S.room) recordVisit(roomKey(S.room), e.title || nameOf(g));
   bubble.hidden = true;
   switch (e.kind) {
@@ -3264,7 +3268,7 @@ const WICON = {
 };
 function embedSource(e) {
   if (!e) return null;
-  if (e.work && (e.work.startsWith('local:') || WORK_RE.test(e.work))) return { hosted: e.work, external: false };
+  if (e.work && (e.work.startsWith('local:') || e.work.startsWith('hall:') || WORK_RE.test(e.work))) return { hosted: e.work, external: false };
   if (validUrl(e.url)) return { src: e.url.trim(), external: true };
   if (DEMOS[e.kind]) return { srcdoc: DEMOS[e.kind], external: false };
   return null;
@@ -3289,13 +3293,13 @@ function createWin(g, e) {
   const kc = KIND_COLOR[e.kind] || KIND_COLOR.link;
   let host = '内置示例', origin = '*';
   if (src.external) { try { const u = new URL(src.src); host = u.host; origin = u.origin; } catch (x) {} }
-  if (src.hosted) host = '隔壁托管' + (e.workBytes ? ' · ' + kb(e.workBytes) : '');
+  if (src.hosted) host = e.hall === 'booth' ? '作者 ' + (e.hby || '') : '隔壁托管' + (e.workBytes ? ' · ' + kb(e.workBytes) : '');
   if (e.from) host += ` · ${e.from.adapted ? '改编自' : '收藏自'} ${e.from.by || '邻居'}`;
   const el = document.createElement('section');
   el.className = 'win ' + size; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', e.title || '作品');
   el.innerHTML = `<header class="win-bar"><i class="win-dot" style="background:linear-gradient(135deg,${kc[0]},${kc[1]})"></i>
     <div class="win-t"><b>${esc(e.title || '作品')}</b><span class="win-sub"><span class="win-host">${esc(host)}</span><button type="button" class="win-sdk" data-a="sdk" disabled>连接中</button></span></div>
-    <div class="win-act">${curateOK(e) ? '<button type="button" class="win-get" data-a="collect">☆ 收藏</button><button type="button" class="win-get" data-a="adapt">改编</button>' : ''}${(hasDownloads(e) || (e.kind === 'shiguang' && S.room && S.room.mine)) ? '<button type="button" class="win-get" data-a="dl" aria-expanded="false">获取客户端</button>' : ''}
+    <div class="win-act">${e.hall === 'booth' ? '<button type="button" class="win-get" data-a="hallfb">写反馈</button>' : ''}${curateOK(e) ? '<button type="button" class="win-get" data-a="collect">☆ 收藏</button><button type="button" class="win-get" data-a="adapt">改编</button>' : ''}${(hasDownloads(e) || (e.kind === 'shiguang' && S.room && S.room.mine)) ? '<button type="button" class="win-get" data-a="dl" aria-expanded="false">获取客户端</button>' : ''}
     <button type="button" class="wbtn" data-a="reload" aria-label="重新载入">${WICON.reload}</button>
     ${src.external ? `<a class="wbtn" href="${esc(src.src)}" target="_blank" rel="noopener noreferrer" aria-label="在新标签页打开">${ICON.ext}</a>` : ''}
     <button type="button" class="wbtn" data-a="min" aria-label="收起到任务栏">${WICON.min}</button>
@@ -3325,6 +3329,7 @@ function createWin(g, e) {
     else if (a === 'sdk') openSdkGuide();
     else if (a === 'collect') collectEntry(e);
     else if (a === 'adapt') adaptEntry(e);
+    else if (a === 'hallfb') hallFeedback(e.hid);
     else if (a === 'tab') { /* plain link */ }
     else if (a === 'always-tab') { e.open = 'tab'; saveLayout(); closeWin(w); toast('以后点这个物件会在新标签页打开'); }
   });
@@ -3380,6 +3385,7 @@ function toggleDl(w, btn) {
 }
 function showWin(w) {
   w.el.hidden = false; S.win = w; S.focus = w.g;
+  if (HALL.on) hallOnPlay(w);
   winBackdrop.hidden = !(w.size === 'wide' && !isNarrow());
   focusOn(w.g, { panel: w.size === 'tall', loose: true });
   renderTaskbar();
@@ -3388,6 +3394,7 @@ function showWin(w) {
 function minimizeWin(w, quiet) {
   if (!w) return;
   w.el.hidden = true;
+  if (HALL.on) hallOnStop(w);
   if (S.win === w) { S.win = null; S.focus = null; winBackdrop.hidden = true; if (!quiet) setView('room'); }
   renderTaskbar();
   if (!quiet && !S.minHinted) { S.minHinted = true; toast('已收起到任务栏，作品保持当前状态，点任务栏回来'); }
@@ -3396,6 +3403,7 @@ function closeWin(w, quiet) {
   if (!w || !WINS.has(w.iid)) return;
   w.timers.forEach(clearTimeout); clearTimeout(w.hs); if (w.onClose) w.onClose();
   w.el.remove(); WINS.delete(w.iid);
+  if (HALL.on) hallOnStop(w);
   if (game.remote === w) { game.remote = null; game.mode = 'attract'; gReset(); }
   const sc = screenOf(w.g); if (sc && sc.restore) sc.restore();
   if (S.win === w) { S.win = null; S.focus = null; winBackdrop.hidden = true; if (!quiet) setView(S.mode === 'build' ? 'build' : 'room'); }
@@ -3404,7 +3412,7 @@ function closeWin(w, quiet) {
 function closeAllWins() { [...WINS.values()].forEach(w => closeWin(w, true)); winBackdrop.hidden = true; }
 function renderTaskbar() {
   const list = [...WINS.values()];
-  taskbar.hidden = !list.length || S.view !== 'room';
+  taskbar.hidden = !list.length || S.view !== 'room' || (HALL.on && !!S.win);   // 展厅里窗口开着时不压在作品上
   taskbar.innerHTML = list.map(w => `<button type="button" class="task ${S.win === w ? 'on' : ''}" data-iid="${esc(w.iid)}"><i></i>${esc(w.e.title || '作品')}</button>`).join('');
   syncDock();
 }
@@ -3716,9 +3724,11 @@ function syncChrome() {
   if (S.mode === 'build') renderPendingRow();
   renderGuide();
   syncDock();
+  if (HALL.on) hallChrome();
 }
 function syncDock() { /* the stats dock sits under the top bar, nothing to shift */ }
 async function setMode(m) {
+  if (HALL.on) return;                       // 展厅里没有装修和出门
   if (m === 'globe') return exitToGlobe();
   if (S.view !== 'room' || (S.busy && !S.room)) return;
   if (m === 'build' && !(S.room && S.room.mine)) { toast(`这是 ${S.room.owner} 的房间，只有房主能动手布置`); return; }
@@ -3783,7 +3793,7 @@ $('#pickAddr').addEventListener('click', () => {
 /* ---------- 收藏与改编 ---------- */
 const CURATE_NO = ['agent', 'guestbook', 'door', 'view', 'music'];
 function originHTML(e) { return e && e.from && residentOfKey(e.from.room) ? `<button type="button" class="btn ghost" data-act="author">去 ${esc(e.from.by || 'TA')} 的房间</button>` : ''; }
-function curateOK(e) { return !!(e && !CURATE_NO.includes(e.kind) && S.room && !S.room.mine && S.view === 'room' && embedSource(e)); }
+function curateOK(e) { return !!(e && !CURATE_NO.includes(e.kind) && S.room && !S.room.mine && !S.room.hall && S.view === 'room' && embedSource(e)); }
 function curateHTML(e) {
   let h = '';
   if (curateOK(e)) h += '<button type="button" class="btn" data-act="collect">☆ 收藏到我的房间</button><button type="button" class="btn" data-act="adapt">改编一份</button>';
@@ -4469,7 +4479,7 @@ $('#pocketBtn').addEventListener('click', openPocket);
 $('#cardBtn').addEventListener('click', () => { const r = S.resident; if (S.room && S.room.mine && !cardOf(r)) openCardEditor(r); else openCard(); });
 $('#cardEditBtn').addEventListener('click', () => openCardEditor(S.resident));
 $('#pendingRow').addEventListener('click', e => { const b = e.target.closest('[data-uid]'); if (b) selectItem(findGroup(b.dataset.uid)); });
-$('#plate').addEventListener('click', () => { if (S.view === 'room' && S.mode === 'visit' && !S.busy) openCard(); });
+$('#plate').addEventListener('click', () => { if (HALL.on) { hallLobby(); return; } if (S.view === 'room' && S.mode === 'visit' && !S.busy) openCard(); });
 
 
 /* deck */
@@ -5768,6 +5778,7 @@ addEventListener('dragover', ev => { if (ev.dataTransfer && [...ev.dataTransfer.
 addEventListener('drop', ev => {
   if (!ev.dataTransfer || !ev.dataTransfer.files.length) return;
   ev.preventDefault();
+  if (HALL.on) { toast('想把作品摆进展厅，点“报名参展”再选这个文件'); return; }
   if (S.view === 'room' && S.room && S.room.mine) openPublish({ files: ev.dataTransfer.files });
   else toast('回到自己的房间，再把作品拖进来');
 });
@@ -5778,6 +5789,749 @@ async function pubFromHash() {
   try { manifest = await linkManifest(m[1]); } catch (e) { toast(e.friendly ? e.message : '发布链接打不开，让 AI 重新生成一次', 5000); return; }
   toast('收到一件要发布的作品，正在带你回自己的房间', 3000);
   openPublish({ manifest });
+}
+/* ============================================================
+   展厅的示例展品：六件单文件小作品，全部是演示数据。
+   真实活动里，展位上放的是作者自己提交的文件（见 28-hall.js 的 hallSubmit）。
+   每件都接了隔壁 SDK：握手后把画面推回展位上的屏幕。
+   写法限制：字符串里不要出现反引号和美元花括号。
+   ============================================================ */
+const HW_HEAD = `<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+html,body{margin:0;height:100%;background:#0b0d11;color:#e1e7f3;font:14px system-ui,"PingFang SC","Microsoft YaHei",sans-serif;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none}
+#w{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px}
+canvas{width:min(96vw,101vh);max-height:76vh;aspect-ratio:4/3;border-radius:10px;background:#111318;cursor:pointer}
+#h{opacity:.75;font-size:13px;text-align:center;padding:0 12px}
+</style></head><body><div id="w"><canvas id="c" width="320" height="240"></canvas><div id="h">`;
+const HW_SDK = `</div></div><script>
+var c=document.getElementById('c'),g=c.getContext('2d'),linked=0,pa=0;
+addEventListener('message',function(e){var m=e.data;if(!m||m.gebi!==1||m.type!=='hello')return;linked=1;parent.postMessage({gebi:1,type:'ready'},'*');});
+function push(dt){pa+=dt;if(pa<.1||!linked||!window.createImageBitmap)return;pa=0;createImageBitmap(c).then(function(f){try{parent.postMessage({gebi:1,type:'screen',frame:f},'*',[f]);}catch(x){}});}
+function pos(e){var r=c.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*320,y:(e.clientY-r.top)/r.height*240};}
+function mid(t,y,s){g.fillStyle='#fff';g.font=(s||16)+'px sans-serif';g.textAlign='center';g.fillText(t,160,y);g.textAlign='left';}
+function veil(){g.fillStyle='rgba(0,0,0,.62)';g.fillRect(0,0,320,240);}
+`;
+const HW_TAIL = `
+window.focus();<\/script></body></html>`;
+const hwDoc = (hint, script) => HW_HEAD + hint + HW_SDK + script + HW_TAIL;
+
+const HALL_WORKS = {
+  /* 接星星：左右移动接住落下的星星，漏三颗结束 */
+  catch: hwDoc('移动鼠标或按 ← → 接星星，漏掉三颗就结束', `
+var px=160,stars=[],score=0,miss=0,t=0,over=0,acc=0,last=performance.now(),keys={};
+function reset(){stars=[];score=0;miss=0;over=0;t=0;}
+c.addEventListener('pointermove',function(e){px=pos(e).x;});
+c.addEventListener('pointerdown',function(e){px=pos(e).x;if(over)reset();});
+addEventListener('keydown',function(e){keys[e.key]=1;if(over&&(e.key===' '||e.key==='Enter'))reset();});
+addEventListener('keyup',function(e){keys[e.key]=0;});
+function loop(n){var dt=Math.min(.05,(n-last)/1000);last=n;
+if(!over){t+=dt;acc+=dt;if(keys.ArrowLeft||keys.a)px-=240*dt;if(keys.ArrowRight||keys.d)px+=240*dt;px=Math.max(24,Math.min(296,px));
+if(acc>Math.max(.28,.9-t*.012)){acc=0;stars.push({x:16+Math.random()*288,y:-8,v:60+Math.random()*40+t*2.2,h:30+Math.random()*60});}
+for(var i=stars.length-1;i>=0;i--){var s=stars[i];s.y+=s.v*dt;if(s.y>212&&s.y<230&&Math.abs(s.x-px)<28){score++;stars.splice(i,1);}else if(s.y>246){miss++;stars.splice(i,1);if(miss>=3)over=1;}}}
+g.fillStyle='#0d1020';g.fillRect(0,0,320,240);
+for(var j=0;j<stars.length;j++){var q=stars[j];g.fillStyle='hsl('+q.h+',95%,65%)';g.beginPath();for(var k=0;k<10;k++){var a=k*Math.PI/5-Math.PI/2,r=k%2?3:7;g.lineTo(q.x+Math.cos(a)*r,q.y+Math.sin(a)*r);}g.fill();}
+g.fillStyle='#62e6d4';g.fillRect(px-24,218,48,7);
+g.fillStyle='#e1e7f3';g.font='12px monospace';g.fillText('接住 '+score,8,16);g.fillText('漏掉 '+miss+'/3',250,16);
+if(over){veil();mid('接住了 '+score+' 颗',112,18);mid('点一下再来',136,12);}
+push(dt);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);`),
+
+  /* 一分钟打砖块 */
+  bricks: hwDoc('移动鼠标或按 ← → 控制挡板，一分钟内能打掉多少', `
+var px=160,b,bricks,score,left,mode='ready',last=performance.now(),keys={};
+function reset(){b={x:160,y:180,vx:90,vy:-150};bricks=[];for(var r=0;r<5;r++)for(var i=0;i<8;i++)bricks.push({x:8+i*38,y:28+r*14,h:r*34+170,on:1});score=0;left=60;}
+reset();
+function start(){if(mode!=='play'){reset();mode='play';}}
+c.addEventListener('pointermove',function(e){px=pos(e).x;});c.addEventListener('pointerdown',function(e){px=pos(e).x;start();});
+addEventListener('keydown',function(e){keys[e.key]=1;if(e.key===' '||e.key==='Enter')start();});addEventListener('keyup',function(e){keys[e.key]=0;});
+function loop(n){var dt=Math.min(.03,(n-last)/1000);last=n;
+if(keys.ArrowLeft||keys.a)px-=260*dt;if(keys.ArrowRight||keys.d)px+=260*dt;px=Math.max(26,Math.min(294,px));
+if(mode==='play'){left-=dt;b.x+=b.vx*dt;b.y+=b.vy*dt;
+if(b.x<4||b.x>316){b.vx=-b.vx;b.x=Math.max(4,Math.min(316,b.x));}if(b.y<4){b.vy=Math.abs(b.vy);}
+if(b.y>210&&b.y<220&&b.vy>0&&Math.abs(b.x-px)<30){b.vy=-Math.abs(b.vy)*1.02;b.vx=(b.x-px)*6;}
+if(b.y>244){b.x=px;b.y=200;b.vy=-150;b.vx=60;left-=3;}
+for(var i=0;i<bricks.length;i++){var k=bricks[i];if(k.on&&b.x>k.x&&b.x<k.x+34&&b.y>k.y&&b.y<k.y+10){k.on=0;b.vy=-b.vy;score++;break;}}
+if(!bricks.some(function(k){return k.on;})){for(var j=0;j<bricks.length;j++)bricks[j].on=1;}
+if(left<=0){left=0;mode='over';}}
+g.fillStyle='#10131f';g.fillRect(0,0,320,240);
+for(var m=0;m<bricks.length;m++){var q=bricks[m];if(!q.on)continue;g.fillStyle='hsl('+q.h+',80%,62%)';g.fillRect(q.x,q.y,34,10);}
+g.fillStyle='#ffb454';g.fillRect(px-26,214,52,6);g.fillStyle='#fff';g.beginPath();g.arc(b.x,b.y,4,0,7);g.fill();
+g.fillStyle='#e1e7f3';g.font='12px monospace';g.fillText('砖块 '+score,8,16);g.fillText(Math.ceil(left)+' 秒',274,16);
+if(mode==='ready'){veil();mid('一分钟打砖块',112,18);mid('点一下开始',136,12);}
+if(mode==='over'){veil();mid('打掉 '+score+' 块',112,18);mid('点一下再来',136,12);}
+push(dt);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);`),
+
+  /* 跟我亮灯：记住亮灯顺序再点一遍 */
+  lights: hwDoc('记住四盏灯亮起的顺序，再照着点一遍', `
+var P=[[60,30,'#ff7aa8'],[170,30,'#62e6d4'],[60,125,'#ffb454'],[170,125,'#7db7ff']],seq=[],at=0,lit=-1,mode='ready',tm=0,best=0,last=performance.now();
+function next(){seq.push(Math.floor(Math.random()*4));at=0;mode='show';tm=.6;lit=-1;}
+function hit(i){if(mode==='ready'||mode==='over'){seq=[];next();return;}if(mode!=='input')return;lit=i;tm=.18;
+if(seq[at]!==i){mode='over';best=Math.max(best,seq.length-1);return;}at++;if(at>=seq.length){mode='wait';tm=.7;}}
+c.addEventListener('pointerdown',function(e){var p=pos(e),k=-1;for(var i=0;i<4;i++)if(p.x>P[i][0]&&p.x<P[i][0]+90&&p.y>P[i][1]&&p.y<P[i][1]+85)k=i;if(k<0&&mode==='input')return;hit(k<0?0:k);});
+addEventListener('keydown',function(e){var k='1234'.indexOf(e.key);if(k>=0)hit(k);else if(e.key===' '||e.key==='Enter')hit(0);});
+function loop(n){var dt=Math.min(.05,(n-last)/1000);last=n;tm-=dt;
+if(mode==='show'&&tm<=0){if(lit>=0){lit=-1;tm=.18;}else if(at<seq.length){lit=seq[at++];tm=.42;}else{mode='input';at=0;}}
+if(mode==='input'&&tm<=0)lit=-1;
+if(mode==='wait'&&tm<=0)next();
+g.fillStyle='#0f1118';g.fillRect(0,0,320,240);
+for(var i=0;i<4;i++){g.globalAlpha=lit===i?1:.28;g.fillStyle=P[i][2];g.fillRect(P[i][0],P[i][1],90,85);g.globalAlpha=1;g.fillStyle='#0f1118';g.font='12px monospace';g.fillText(String(i+1),P[i][0]+6,P[i][1]+16);}
+g.fillStyle='#e1e7f3';g.font='12px monospace';g.fillText('第 '+seq.length+' 轮',270,60);g.fillText('最好 '+best,270,80);
+g.fillText(mode==='show'?'看':mode==='input'?'点':'',284,120);
+if(mode==='ready'){veil();mid('跟我亮灯',112,18);mid('点一下开始，也可以按 1 2 3 4',136,12);}
+if(mode==='over'){veil();mid('记住了 '+(seq.length-1)+' 步',112,18);mid('点一下再来',136,12);}
+push(dt);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);`),
+
+  /* 反应力：变绿就点，五次取平均 */
+  reflex: hwDoc('屏幕变绿的一瞬间点下去，五次取平均', `
+var mode='ready',tm=0,t0=0,rs=[],msg='',last=performance.now();
+function go(){if(mode==='ready'||mode==='done'){rs=[];arm();}else if(mode==='wait'){msg='太早了，重来这一次';arm();}else if(mode==='go'){rs.push(Math.round(performance.now()-t0));msg=rs[rs.length-1]+' 毫秒';if(rs.length>=5)mode='done';else arm();}}
+function arm(){mode='wait';tm=1.2+Math.random()*2.4;}
+c.addEventListener('pointerdown',go);addEventListener('keydown',function(e){if(e.key===' '||e.key==='Enter')go();});
+function loop(n){var dt=Math.min(.05,(n-last)/1000);last=n;
+if(mode==='wait'){tm-=dt;if(tm<=0){mode='go';t0=performance.now();}}
+g.fillStyle=mode==='go'?'#1f9d6b':mode==='wait'?'#8a2f3c':'#141722';g.fillRect(0,0,320,240);
+if(mode==='ready'){mid('反应力测试',104,18);mid('点一下开始，变绿就点',130,12);}
+if(mode==='wait'){mid('等它变绿……',112,18);mid(msg,140,12);}
+if(mode==='go')mid('点！',124,30);
+if(mode==='done'){var a=Math.round(rs.reduce(function(x,y){return x+y;},0)/rs.length);mid('平均 '+a+' 毫秒',100,20);mid(rs.join(' · '),128,12);mid('点一下再测',154,12);}
+g.fillStyle='rgba(255,255,255,.7)';g.font='12px monospace';g.fillText(rs.length+'/5',290,16);
+push(dt);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);`),
+
+  /* 点一下长棵树：每次点击长出一棵不一样的树 */
+  trees: hwDoc('点画面任意位置，长出一棵不一样的树', `
+var grow=[],n=0,last=performance.now();
+function sky(){var gr=g.createLinearGradient(0,0,0,240);gr.addColorStop(0,'#141a33');gr.addColorStop(1,'#2a2440');g.fillStyle=gr;g.fillRect(0,0,320,240);g.fillStyle='#1b2a26';g.fillRect(0,214,320,26);}
+sky();
+function plant(x){var h=90+Math.random()*120;grow.push({x:x,y:216,a:-Math.PI/2,l:22+Math.random()*16,w:5,d:0,h:h,p:0});n++;}
+c.addEventListener('pointerdown',function(e){plant(pos(e).x);});
+addEventListener('keydown',function(e){if(e.key===' '||e.key==='Enter')plant(30+Math.random()*260);if(e.key==='c'){sky();n=0;}});
+function loop(now){var dt=Math.min(.05,(now-last)/1000);last=now;
+for(var i=grow.length-1;i>=0;i--){var b=grow[i],q=Math.min(1,b.p+dt*3.2),x0=b.x+Math.cos(b.a)*b.l*b.p,y0=b.y+Math.sin(b.a)*b.l*b.p,x1=b.x+Math.cos(b.a)*b.l*q,y1=b.y+Math.sin(b.a)*b.l*q;
+g.strokeStyle=b.d<3?'hsl(28,35%,'+(34+b.d*5)+'%)':'hsl('+b.h+',60%,62%)';g.lineWidth=Math.max(1,b.w);g.lineCap='round';g.beginPath();g.moveTo(x0,y0);g.lineTo(x1,y1);g.stroke();b.p=q;
+if(q>=1){grow.splice(i,1);if(b.d<6){var k=b.d<2?2:(Math.random()<.75?2:3);for(var j=0;j<k;j++)grow.push({x:x1,y:y1,a:b.a+(Math.random()-.5)*1.25,l:b.l*(.68+Math.random()*.16),w:b.w*.68,d:b.d+1,h:b.h,p:0});}}}
+g.fillStyle='rgba(20,26,51,.9)';g.fillRect(0,0,70,22);g.fillStyle='#e1e7f3';g.font='12px monospace';g.fillText(n+' 棵树',8,15);
+push(dt);requestAnimationFrame(loop);}
+plant(90);plant(220);requestAnimationFrame(loop);`),
+
+  /* 节拍垫：点格子编一段四小节的鼓点 */
+  beats: hwDoc('点格子编一段鼓点，按空格播放或暂停', `
+var R=['镲','军鼓','底鼓','铃'],F=[0,0,60,880],G=[],step=0,acc=0,play=0,ac=null,last=performance.now();
+for(var r=0;r<4;r++){G.push([]);for(var i=0;i<8;i++)G[r].push(0);}
+G[2][0]=G[2][4]=G[1][2]=G[1][6]=G[0][1]=G[0][3]=G[0][5]=G[0][7]=1;
+function hit(r){if(!ac)return;var t=ac.currentTime,o,gn=ac.createGain();gn.connect(ac.destination);
+if(r<2){var len=r?0.12:0.05,buf=ac.createBuffer(1,ac.sampleRate*len,ac.sampleRate),d=buf.getChannelData(0);for(var i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*(1-i/d.length);o=ac.createBufferSource();o.buffer=buf;gn.gain.value=r?0.35:0.18;o.connect(gn);o.start(t);}
+else{o=ac.createOscillator();o.frequency.setValueAtTime(r===2?140:F[r],t);if(r===2)o.frequency.exponentialRampToValueAtTime(45,t+.14);gn.gain.setValueAtTime(r===2?0.6:0.18,t);gn.gain.exponentialRampToValueAtTime(.001,t+(r===2?.2:.18));o.connect(gn);o.start(t);o.stop(t+.22);}}
+function toggle(){try{if(!ac)ac=new (window.AudioContext||window.webkitAudioContext)();if(ac.state==='suspended')ac.resume();}catch(e){}play=!play;}
+c.addEventListener('pointerdown',function(e){var p=pos(e);if(p.y>200){toggle();return;}var i=Math.floor((p.x-48)/33),r=Math.floor((p.y-24)/42);if(i>=0&&i<8&&r>=0&&r<4){G[r][i]=G[r][i]?0:1;if(G[r][i]){if(!ac)toggle(),play=0;hit(r);}}});
+addEventListener('keydown',function(e){if(e.key===' '||e.key==='Enter')toggle();});
+function loop(n){var dt=Math.min(.05,(n-last)/1000);last=n;
+if(play){acc+=dt;if(acc>.2){acc-=.2;step=(step+1)%8;for(var r=0;r<4;r++)if(G[r][step])hit(r);}}
+g.fillStyle='#12141d';g.fillRect(0,0,320,240);
+for(var r2=0;r2<4;r2++){g.fillStyle='#9ba4b6';g.font='12px sans-serif';g.fillText(R[r2],10,24+r2*42+24);
+for(var i=0;i<8;i++){var on=G[r2][i];g.fillStyle=on?['#ffb454','#ff7aa8','#62e6d4','#7db7ff'][r2]:(i%4?'#1d2027':'#252a33');if(play&&i===step)g.globalAlpha=on?1:.6;else g.globalAlpha=on?.85:1;g.fillRect(48+i*33,24+r2*42,29,36);g.globalAlpha=1;}}
+if(play){g.strokeStyle='#e1e7f3';g.lineWidth=1.5;g.strokeRect(47+step*33,22,31,166);}
+g.fillStyle=play?'#62e6d4':'#2e343e';g.fillRect(110,204,100,26);g.fillStyle=play?'#03201c':'#e1e7f3';g.font='13px sans-serif';g.textAlign='center';g.fillText(play?'暂停':'播放',160,222);g.textAlign='left';
+push(dt);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);`)
+};
+/* ============================================================
+   展厅模式：一场线上活动就是一间展厅。
+   地址带 ?hall（或 #hall，或页面里设了 window.GEBI_HALL）时，
+   打开就直接进展厅，不加载地球，也不出现个人房间的入口。
+   这个文件：活动数据、展位布置、启动、活动说明、报名参展。
+   在场的人、聊天、反馈、手机列表页在 29-hall-social.js。
+   数据约定见 docs/ARCHITECTURE.md「展厅模式」。
+   ============================================================ */
+const HALL_NEED = 3;                       // 评满几件别人的作品，才能看自己收到的反馈
+const HALL_TAGS = ['好玩', '新奇', '想再玩', '没看懂', '遇到 bug'];
+const HALL_EVENT = {
+  id: 'demo-01', demo: true,
+  title: '隔壁展示夜 · 演示场',
+  host: '主理人（演示）',
+  intro: '一间线上展厅：每个展位是一件能直接上手的作品，欢迎用 AI 做的东西。逛一圈，玩一玩，给作者留一句具体的话。',
+  theme: { wall: '#1c2030', trim: '#2c3350', floor: 'concrete', floorTint: '#34363f', neon: 'OPEN NIGHT', neonColor: '#62e6d4', arcade: '#2a3052', bean: '#62e6d4', sofa: '#2a2f52', rug: ['#20244a', '#62e6d4', '#ffb454', '#141733'] },
+  booths: [
+    { id: 's1', sample: 'catch', title: '接星星', by: '阿橘', desc: '左右移动接住落下的星星，越到后面落得越快', kind: 'game2', color: '#3b2a6b' },
+    { id: 's2', sample: 'bricks', title: '一分钟打砖块', by: '老周', desc: '限时一分钟的打砖块，掉球会扣时间', kind: 'game2', color: '#7a2f3c' },
+    { id: 's3', sample: 'lights', title: '跟我亮灯', by: 'Momo', desc: '记住四盏灯亮起的顺序，一轮比一轮长', kind: 'game2', color: '#1f5a66' },
+    { id: 's4', sample: 'reflex', title: '反应力测试', by: '小鹿', desc: '屏幕变绿就点，五次取平均，看看你有多快', kind: 'web', color: '#1f9d6b' },
+    { id: 's5', sample: 'trees', title: '点一下长棵树', by: 'K', desc: '每点一下长出一棵不一样的树，慢慢点出一片林子', kind: 'web', color: '#3d5afe' },
+    { id: 's6', sample: 'beats', title: '节拍垫', by: '阿橘', desc: '点格子编一段鼓点，按空格播放', kind: 'web', color: '#a83cff' }
+  ]
+};
+// 八个展位的位置。先排后墙一排，再排两侧；靠门的两个留给报名的人
+const HALL_SLOTS = [
+  { x: -3.6, z: -3.4, rot: 0 }, { x: -1.2, z: -3.4, rot: 0 }, { x: 1.2, z: -3.4, rot: 0 }, { x: 3.6, z: -3.4, rot: 0 },
+  { x: -4.3, z: -.7, rot: 1 }, { x: -4.3, z: 1.7, rot: 1 }, { x: 4.3, z: -.7, rot: 3 }, { x: 4.3, z: 1.7, rot: 3 }
+];
+const HALL_ORDER = [0, 1, 2, 3, 4, 6, 5, 7];
+
+const HALL = {
+  on: new URLSearchParams(location.search).has('hall') || /^#hall\b/.test(location.hash) || !!window.GEBI_HALL,
+  ev: HALL_EVENT, docs: new Map(), clean: new Map(), pres: new Map(), me: null, loaded: false,
+  lite: false, three: false, ui: false, playing: '', playT: 0, pendingFb: '', dirty: false, sig: '',
+  bots: store.get('gebi.hall.bots', true), botList: [], botChat: [], av: new Map(), avRoot: null,
+  iid2b: {}, stand: {}, cnt: {}, liteT: 0, saveT: 0, pres0: { x: 0, z: 0, b: '', at: 0 }, n: 0
+};
+
+/* ---------- 我自己的那份数据 ---------- */
+function hallUid() { return CLOUD.ready ? CLOUD.me.id : 'local'; }
+function hallShared() { return CLOUD.ready && canPost(); }           // 我写的东西别人看得到吗
+function hallMyBoothId() { return 'u-' + hallUid(); }
+// 本机存的东西按活动和账号分开，同一个浏览器换账号不会串
+function hallKey(k) { return `gebi.hall.${k}.${HALL.ev.id}.${hallUid()}`; }
+function hallLoadLocal() {
+  const d = store.get(hallKey('me'), null) || {};
+  return { ev: HALL.ev.id, name: String(d.name || '').slice(0, 12), booth: d.booth && d.booth.title ? d.booth : null, fb: d.fb && typeof d.fb === 'object' ? d.fb : {}, chat: Array.isArray(d.chat) ? d.chat.slice(-20) : [] };
+}
+function hallSave() {
+  const me = HALL.me; me.ev = HALL.ev.id; me.updatedAt = Date.now();
+  store.set(hallKey('me'), me);
+  if (!hallShared()) return;
+  clearTimeout(HALL.saveT);
+  HALL.saveT = setTimeout(() => { cloudWrite(`hall/${CLOUD.me.id}`, clone(HALL.me)).catch(() => {}); }, 400);
+}
+// 别人的文档先清洗再用：只留认识的字段，每个字段都有长度上限
+function cleanHallDoc(d) {
+  if (!d || typeof d !== 'object' || d.ev !== HALL.ev.id) return null;
+  const s = (v, n) => String(v == null ? '' : v).slice(0, n);
+  const o = { name: s(d.name, 12), booth: null, fb: {}, chat: [] };
+  if (d.booth && typeof d.booth === 'object' && d.booth.title) o.booth = { title: s(d.booth.title, 30), by: s(d.booth.by, 12), desc: s(d.booth.desc, 80), kind: d.booth.kind === 'game2' ? 'game2' : 'web', at: +d.booth.at || 0, bytes: +d.booth.bytes || 0 };
+  if (d.fb && typeof d.fb === 'object') Object.keys(d.fb).slice(0, 60).forEach(k => {
+    const f = d.fb[k]; if (!f || typeof f !== 'object' || !/^[A-Za-z0-9_\-.~:@+]{1,80}$/.test(k)) return;
+    o.fb[k] = { like: s(f.like, 160), tip: s(f.tip, 160), tags: (Array.isArray(f.tags) ? f.tags : []).filter(t => HALL_TAGS.includes(t)).slice(0, 5), at: +f.at || 0 };
+  });
+  (Array.isArray(d.chat) ? d.chat : []).slice(-20).forEach(m => { if (m && typeof m.t === 'string' && m.t.trim()) o.chat.push({ id: s(m.id, 16), t: s(m.t, 80), at: +m.at || 0 }); });
+  return o;
+}
+
+/* ---------- 展位 ---------- */
+function hallBooths() {
+  const out = HALL.ev.booths.map(b => Object.assign({ demo: true }, b));
+  const real = [];
+  HALL.clean.forEach((c, uid) => { if (CLOUD.ready && uid === CLOUD.me.id) return; if (c.booth) real.push(Object.assign({ id: 'u-' + uid, owner: uid }, c.booth)); });
+  const mine = HALL.me && HALL.me.booth;
+  if (mine) real.push(Object.assign({}, mine, { id: hallMyBoothId(), owner: hallUid(), mine: true, local: !hallShared() }));
+  real.sort((a, b) => a.at - b.at);
+  return out.concat(real);
+}
+function hallBooth(id) { return hallBooths().find(b => b.id === id) || null; }
+function hallIid(id) { return 'b-' + String(id).replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 60); }
+function hallEntry(b) { return { kind: b.kind, title: b.title, desc: b.desc, url: '', work: 'hall:' + b.id, color: b.color, size: 'wide', hall: 'booth', hid: b.id, hby: b.by }; }
+function hallItems() {
+  const booths = hallBooths(), items = [{ uid: 'rug', type: 'rug', x: 0, z: .3 }];
+  HALL.iid2b = {}; HALL.stand = {};
+  HALL_ORDER.forEach((si, i) => {
+    const s = HALL_SLOTS[si], b = booths[i];
+    if (b) {
+      const uid = hallIid(b.id), n = [[0, 1], [1, 0], [0, -1], [-1, 0]][s.rot];
+      HALL.iid2b[uid] = b.id; HALL.stand[b.id] = { x: s.x + n[0] * 1.35, z: s.z + n[1] * 1.35, side: s.rot % 2 === 1 };
+      items.push({ uid, type: b.kind === 'game2' ? 'arcade' : 'kiosk', x: s.x, z: s.z, rot: s.rot, name: '展位', entry: hallEntry(b) });
+    } else items.push({ uid: 'slot' + si, type: 'kiosk', x: s.x, z: s.z, rot: s.rot, name: '空展位', entry: { kind: 'link', title: '空展位 · 报名参展', desc: '把你的作品摆在这里', url: '', hall: 'slot' } });
+  });
+  items.push(
+    { uid: 'board', type: 'noticeBoard', x: 3.2, z: 3.1, rot: 2, ry: .75, name: '告示板', entry: { kind: 'doc', title: '活动说明', desc: '', url: '', hall: 'info' } },
+    // 休息角放在进门左手边，中间留空给人走动，进门第一眼看到的是展位
+    { uid: 'bb1', type: 'beanbag', x: -3.4, z: 3.1, ry: .9 }, { uid: 'bb2', type: 'beanbag', x: -2.3, z: 3.3, ry: -.3 },
+    { uid: 'p1', type: 'plant', x: -4.4, z: 3.4 }, { uid: 'lp', type: 'floorLamp', x: -4.4, z: -2.2 }, { uid: 'lp2', type: 'floorLamp', x: 4.4, z: -2.2 },
+    { uid: 'neon', type: 'neon', wall: 'back', u: 0, y: 3.7 },
+    { uid: 'door', type: 'door', wall: 'front', u: 0, y: 0, entry: { kind: 'door', title: '活动说明 · 出口', desc: '' } }
+  );
+  return items;
+}
+function hallRoom() {
+  const ev = HALL.ev;
+  return { id: 'hall', hall: true, no: '展', name: ev.title, owner: ev.host, city: '线上', lat: 31.23, lon: 121.47, tz: tzFor(31.23, 121.47), mine: false, theme: clone(ev.theme), items: hallItems() };
+}
+function hallSig() { return hallBooths().map(b => b.id + '|' + b.title + '|' + b.kind + '|' + b.at).join(','); }
+// 展位名单变了才重搭。有作品窗口开着时先记下，等窗口关了再搭，免得把正在玩的人打断
+function hallRebuild(force) {
+  const sig = hallSig();
+  if (!force && sig === HALL.sig) return;
+  if (WINS.size && !force) { HALL.dirty = true; return; }
+  HALL.sig = sig; HALL.dirty = false;
+  if (S.room && S.room.hall) {
+    S.room.items = hallItems();
+    if (S.roomRoot) { S.hover = null; S.focus = null; buildRoom(S.room); }
+  }
+  hallLiteRender(); hallChrome();
+}
+// 展位上的作品：示例作品在代码里，自己的在本机留了一份，别人的从共享数据里读
+async function hallWork(id) {
+  const b = hallBooth(id); if (!b) return null;
+  if (b.sample) return HALL_WORKS[b.sample] || null;
+  if (b.mine) { const own = store.get(hallKey('work'), null); if (own || b.local) return own; }
+  if (!CLOUD.ready) return null;
+  try { const d = await DATA.get(`hall/${b.owner}/works/main`); return d ? String(d.html || '') : null; } catch (e) { return null; }
+}
+
+/* ---------- 启动 ---------- */
+async function hallBoot(prog) {
+  document.body.dataset.hall = '1';
+  HALL.me = hallLoadLocal();
+  HALL.lite = isNarrow() || new URLSearchParams(location.search).get('lite') === '1';
+  try { await Promise.race([Promise.all([`14px ${FONT.body}`, `700 28px ${FONT.body}`, `13px ${FONT.mono}`].map(f => document.fonts.load(f, HALL.ev.title + '展位反馈'))), sleep(1800)]); } catch (e) {}
+  prog(1);
+  drawFace(0); drawCode(0); gDraw();
+  hallEnsureUi();
+  S.room = hallRoom(); HALL.sig = hallSig();
+  setFade(1);
+  initCloud().then(hallCloud);
+  $('#loader').classList.add('gone');
+  setTimeout(() => { $('#loader').hidden = true; }, 700);
+  setInterval(hallTick, 1000);
+  if (HALL.lite) { S.view = 'lite'; setChromeView('lite'); syncChrome(); hallLiteOpen(); hallLobby(); }
+  else await hallEnter3D();
+  try { const s = await DATA.sample(); if (s) S.sample = s; } catch (e) {}
+}
+async function hallEnter3D() {
+  hallLiteClose();
+  if (HALL.three) return;
+  HALL.three = true;
+  HALL.avRoot = new THREE.Group(); scene.add(HALL.avRoot);
+  const arrived = arriveInRoom(S.room);            // 同步部分已经把房间搭好，之后才能开始渲染
+  last = performance.now(); raf = requestAnimationFrame(frame);
+  await arrived;
+  hallTick();
+  if (!HALL.greeted) { HALL.greeted = true; hallLobby(); }
+}
+function hallCloud() {
+  if (!CLOUD.ready) { hallChrome(); return; }
+  // 连上之后才知道自己是谁：换成这个账号在本机存的那一份
+  const typed = HALL.me.name; HALL.me = hallLoadLocal(); if (!HALL.me.name) HALL.me.name = typed;
+  hallRebuild();
+  if (S.panel && S.panel.kind === 'hall' && !$('#hlName').value) hallLobby();
+  const quiet = () => {};
+  DATA.watchCollection('hall', hallOnDocs, quiet);
+  DATA.watchCollection('hallp', m => { HALL.pres = m; }, quiet);
+  hallChrome();
+}
+function hallOnDocs(m) {
+  HALL.docs = m; HALL.clean = new Map();
+  m.forEach((d, uid) => { const c = cleanHallDoc(d); if (c) HALL.clean.set(uid, c); });
+  if (!HALL.loaded) {
+    // 第一次拿到数据：如果云端有我之前写的，以云端为准，再并上这台设备上还没同步的
+    HALL.loaded = true;
+    const mine = HALL.clean.get(CLOUD.me.id);
+    if (mine && canPost()) { HALL.me.name = HALL.me.name || mine.name; HALL.me.booth = HALL.me.booth || mine.booth; HALL.me.fb = Object.assign({}, mine.fb, HALL.me.fb); if (!HALL.me.chat.length) HALL.me.chat = mine.chat; }
+  }
+  hallRebuild(); hallChatRender(); hallChrome(); hallLiteRender();
+  if (S.panel && S.panel.kind === 'hallmine') hallMine();
+}
+
+/* ---------- 物件被点到 ---------- */
+function hallActivate(g, e) {
+  if (e.kind === 'door') { hallLobby(); return true; }
+  if (e.hall === 'info') { hallLobby(g); return true; }
+  if (e.hall === 'slot') { hallSubmit(g); return true; }
+  return false;                                    // 展位走原来的作品窗口
+}
+function hallModeNote() {
+  if (!CLOUD.ready) return '<b>单机预览</b>这一页现在没有连上共享数据：你看到的访客是模拟出来的，反馈和展位只存在这台设备上。';
+  if (!canPost()) return '<b>你现在是查看者</b>能逛、能玩。你写的反馈和报名的展位只存在这台设备上，别人看不到。';
+  return '<b>多人模式</b>其他人能看到你在展厅里的位置、你说的话和你的展位。你写的反馈只显示给那件作品的作者。';
+}
+
+/* ---------- 活动说明 ---------- */
+function hallLobby(g) {
+  beginPanel('hall', g || null);
+  const ev = HALL.ev;
+  setPanel('线上展厅' + (ev.demo ? ' · 演示场次' : ''), ev.title, `
+    <p class="u-mb3">${esc(ev.intro)}</p>
+    <ol class="steps-s">
+      <li><b>逛展位</b><span>${HALL.lite ? '点“试玩”' : '走到展位前点一下'}，作品直接在这里打开，不用下载。</span></li>
+      <li><b>写反馈</b><span>玩过之后写一两句具体的感受，哪一刻好玩、哪里卡住了。</span></li>
+      <li><b>评满 ${HALL_NEED} 件</b><span>评满 ${HALL_NEED} 件别人的作品，就能看到自己的展位收到了什么。</span></li>
+    </ol>
+    <div class="field"><label for="hlName">你在展厅里的名字</label><input class="input" id="hlName" maxlength="12" value="${esc(HALL.me.name)}" placeholder="比如：做像素游戏的阿橘"></div>
+    <label class="check"><input type="checkbox" id="hlBots"${HALL.bots ? ' checked' : ''}>显示演示访客（模拟出来的人，方便一个人预览）</label>
+    <div class="callout">${hallModeNote()}</div>
+    ${ev.demo ? '<p class="mute small u-mt3">这是演示场次：六件展品和它们的作者都是演示数据。</p>' : ''}`,
+    `<button type="button" class="btn primary" id="hlGo">开始逛展</button><button type="button" class="btn" id="hlList">${HALL.lite && !$('#hallLite').hidden ? '进入 3D 展厅' : '展品列表'}</button>`);
+  const saveName = () => { const v = $('#hlName').value.trim().slice(0, 12); if (v !== HALL.me.name) { HALL.me.name = v; hallSave(); } };
+  $('#hlName').addEventListener('change', saveName);
+  $('#hlBots').addEventListener('change', ev2 => { HALL.bots = ev2.target.checked; store.set('gebi.hall.bots', HALL.bots); hallTick(); });
+  $('#hlGo').addEventListener('click', () => { saveName(); closePanel(); });
+  $('#hlList').addEventListener('click', () => { saveName(); closePanel(); if (HALL.lite && !$('#hallLite').hidden) hallEnter3D(); else hallLiteOpen(); });
+}
+
+/* ---------- 报名参展：一人一个展位，放一个单文件网页 ---------- */
+function hallSubmit(g) {
+  beginPanel('hallsub', g || null);
+  const cur = HALL.me.booth || {}, has = !!HALL.me.booth;
+  let kind = cur.kind === 'game2' ? 'game2' : 'web', html = '';
+  setPanel('报名参展', has ? '更新我的展位' : '把作品摆进展厅', `
+    <p class="mute small u-mb4">一个人一个展位，放一个单文件网页（.html，不超过 200 KB）。用 AI 做的完全欢迎。作品在隔离的窗口里运行，碰不到别人的数据。</p>
+    <form id="hsForm">
+      <div class="field"><label for="hsTitle">作品名</label><input class="input" id="hsTitle" maxlength="30" value="${esc(cur.title || '')}" placeholder="比如：深夜便利店收银模拟器"></div>
+      <div class="field"><label for="hsBy">作者署名</label><input class="input" id="hsBy" maxlength="12" value="${esc(cur.by || HALL.me.name)}" placeholder="展位上显示的名字"></div>
+      <div class="field"><label for="hsDesc">一句话介绍</label><textarea class="input" id="hsDesc" maxlength="80" rows="2" placeholder="它是什么，怎么玩">${esc(cur.desc || '')}</textarea></div>
+      <div class="field"><label>类型</label><div class="seg" id="hsKind"><button type="button" data-v="game2" aria-pressed="${kind === 'game2'}">小游戏</button><button type="button" data-v="web" aria-pressed="${kind === 'web'}">网页或工具</button></div></div>
+      <div class="field"><label for="hsFile">作品文件</label><input class="input" type="file" id="hsFile" accept=".html,.htm,text/html"><span class="hint-s" id="hsFileNote">${has ? '不选文件就沿用现在的版本（' + kb(cur.bytes || 0) + '）。' : '也可以把 AI 给你的整段 HTML 粘到下面。'}</span></div>
+      <div class="field"><label for="hsHtml">或者粘贴 HTML</label><textarea class="input u-mono" id="hsHtml" rows="4" spellcheck="false" placeholder="&lt;!doctype html&gt; …"></textarea></div>
+      <span class="err" id="hsErr" hidden></span>
+    </form>
+    <div class="callout">${hallModeNote()}</div>`,
+    `<button type="submit" form="hsForm" class="btn primary">${has ? '保存展位' : '摆进展厅'}</button>${has ? '<button type="button" class="btn ghost" id="hsDrop">撤下展位</button>' : ''}`);
+  $('#hsKind').addEventListener('click', ev => { const b = ev.target.closest('button'); if (!b) return; kind = b.dataset.v; $('#hsKind').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+  $('#hsFile').addEventListener('change', async ev => {
+    const f = ev.target.files[0]; if (!f) return;
+    try { html = await f.text(); } catch (e) { html = ''; }
+    $('#hsFileNote').textContent = html ? `已读取 ${f.name}（${kb(html.length)}）` : '这个文件读不出来，换一个试试。';
+    if (html && !$('#hsTitle').value.trim()) $('#hsTitle').value = (titleFromText(html, 'web') || baseName(f.name)).slice(0, 30);
+  });
+  const drop = $('#hsDrop');
+  if (drop) drop.addEventListener('click', () => { HALL.me.booth = null; hallSave(); closeAllWins(); hallRebuild(true); closePanel(); toast('展位已撤下，文件还留在这台设备上，随时可以重新摆出来'); });
+  $('#hsForm').addEventListener('submit', async ev => {
+    ev.preventDefault();
+    const err = $('#hsErr'), fail = t => { err.textContent = t; err.hidden = false; };
+    const title = $('#hsTitle').value.trim(), by = $('#hsBy').value.trim() || HALL.me.name || '匿名作者', desc = $('#hsDesc').value.trim();
+    const src = html || $('#hsHtml').value.trim();
+    if (!title) return fail('先给作品起个名字。');
+    if (!src && !has) return fail('还没有作品文件：选一个 .html 文件，或者把 HTML 粘进来。');
+    if (src && !/<[a-z!]/i.test(src)) return fail('这看起来不是网页：需要一个完整的 HTML 文件。');
+    if (src.length > WORK_MAX) return fail(`文件有 ${kb(src.length)}，超过 200 KB。把图片换成外链，或者压缩一下再试。`);
+    const booth = { title: title.slice(0, 30), by: by.slice(0, 12), desc: desc.slice(0, 80), kind, at: cur.at || Date.now(), bytes: src ? src.length : (cur.bytes || 0) };
+    if (src) {
+      store.set(hallKey('work'), src);
+      if (hallShared()) { try { await cloudWrite(`hall/${CLOUD.me.id}/works/main`, { title: booth.title, html: src, bytes: src.length, updatedAt: Date.now() }); } catch (e) { return fail('没保存成功，稍后再试一次。'); } }
+    }
+    HALL.me.booth = booth; if (!HALL.me.name) HALL.me.name = booth.by;
+    hallSave(); closeAllWins(); hallRebuild(true); closePanel();
+    const inRoom = S.roomRoot && findGroup(hallIid(hallMyBoothId()));
+    toast(inRoom ? `「${booth.title}」已经摆进展厅${hallShared() ? '' : '（只有你自己看得到）'}` : `「${booth.title}」已报名。展厅里的 ${HALL_SLOTS.length} 个展位满了，它在“展品列表”里`, 4200);
+    if (inRoom && HALL.three && S.view === 'room') walkTo(inRoom, { panel: false });
+  });
+}
+
+/* ---------- 顶栏和数据条 ---------- */
+function hallChrome() {
+  if (!HALL.ui) return;
+  const ev = HALL.ev, booths = hallBooths(), given = hallGiven();
+  $('#plateNo').textContent = '展'; $('#plateName').textContent = ev.title;
+  $('#plateSub').textContent = `线上展厅 · ${booths.length} 件展品 · ${ev.host}`;
+  $('#hsN').textContent = HALL.n + 1;
+  $('#hsFb').textContent = `${Math.min(given, HALL_NEED)}/${HALL_NEED}`;
+  $('#hsDemo').hidden = !(HALL.bots && HALL.botList.length);
+  $('#hsSubmit').textContent = HALL.me && HALL.me.booth ? '我的展位' : '报名参展';
+  const pb = HALL.pendingFb && hallBooth(HALL.pendingFb), go = $('#hsFbGo');
+  go.hidden = !pb; if (pb) go.textContent = `写「${pb.title}」的反馈`;
+}
+/* ============================================================
+   展厅里的人：谁在场、谁在玩哪件、全场聊天、反馈卡、反馈报告，
+   以及给手机用的展品列表页。
+   演示访客是本机模拟出来的，名字后面一律带“演示”。
+   ============================================================ */
+const HALL_BOTS = [['bot-1', '阿橘'], ['bot-2', 'Momo'], ['bot-3', '老周'], ['bot-4', '小鹿'], ['bot-5', 'K']];
+const HALL_BOT_LINES = ['「{t}」我玩了三遍', '有人试过「{t}」吗，手感不错', '「{t}」的作者在吗，想问个问题', '刚在「{t}」卡了一下，不过挺上头', '「{t}」适合拿来开场'];
+// 示例展位自带的几条反馈，用来预览“我的反馈”和反馈报告长什么样
+const HALL_SEED = {
+  s1: [
+    { by: '老周', like: '星星越落越快的节奏刚好，三十颗左右开始手忙脚乱', tip: '漏掉的时候希望屏幕闪一下，现在不太容易发现自己漏了', tags: ['好玩', '想再玩'] },
+    { by: 'Momo', like: '上手零门槛，鼠标一动就知道怎么玩', tip: '可以加一种要躲开的东西，现在只有接这一个动作', tags: ['好玩'] },
+    { by: '小鹿', like: '星星的颜色很舒服', tip: '手机上挡板有点窄，手指会挡住视线', tags: ['新奇', '遇到 bug'] },
+    { by: 'K', like: '结束画面直接显示接了多少颗，想马上再来一局', tip: '想看到自己的最高纪录', tags: ['想再玩'] }
+  ],
+  s2: [{ by: '阿橘', like: '限时一分钟这个设定让人很紧张', tip: '球速后期太快，挡板跟不上', tags: ['好玩'] }, { by: 'K', like: '掉球扣时间比直接结束友好', tip: '砖块打完重新出现的时候没有提示', tags: ['没看懂'] }],
+  s3: [{ by: '小鹿', like: '四种颜色配得好看', tip: '想要声音，每盏灯一个音', tags: ['想再玩'] }],
+  s5: [{ by: 'Momo', like: '每棵树都不一样，点着点着就停不下来', tip: '想保存成图片发给朋友', tags: ['新奇', '想再玩'] }]
+};
+
+/* ---------- 界面骨架（只在展厅模式创建） ---------- */
+function hallEnsureUi() {
+  if (HALL.ui) return;
+  const st = document.createElement('div'); st.className = 'stats hall-stats'; st.id = 'hallStats';
+  st.innerHTML = `<span><span class="lbl">在场</span> <b id="hsN">1</b></span><span><span class="lbl">已评</span> <b id="hsFb">0/${HALL_NEED}</b></span><span class="demo" id="hsDemo" hidden>含演示访客</span>
+    <button type="button" class="like" data-h="fb" id="hsFbGo" hidden></button><button type="button" class="like" data-h="list">展品列表</button><button type="button" class="like" data-h="submit" id="hsSubmit">报名参展</button><button type="button" class="like" data-h="mine">我的反馈</button><button type="button" class="like" data-h="info">活动说明</button>`;
+  $('#dock').appendChild(st);
+  const hallDo = h => {
+    if (h === 'list') hallLiteOpen(); else if (h === 'submit') hallSubmit(); else if (h === 'mine') hallMine(); else if (h === 'info') hallLobby();
+    else if (h === 'fb' && HALL.pendingFb) hallFeedback(HALL.pendingFb); else if (h === '3d') hallEnter3D();
+  };
+  st.addEventListener('click', ev => { const b = ev.target.closest('[data-h]'); if (b && !S.busy) hallDo(b.dataset.h); });
+  const tags = document.createElement('div'); tags.className = 'hall-tags'; tags.id = 'hallTags'; tags.setAttribute('aria-hidden', 'true'); document.body.appendChild(tags);
+  const chat = document.createElement('section'); chat.className = 'hall-chat'; chat.id = 'hallChat'; chat.setAttribute('aria-label', '全场聊天');
+  chat.innerHTML = `<div class="hall-chat-log" id="hcLog" aria-live="polite"></div><form class="composer" id="hcForm" autocomplete="off"><input class="input" id="hcIn" maxlength="80" placeholder="说点什么，全场都看得到" aria-label="全场聊天"><button class="btn sm primary" type="submit">发送</button></form>`;
+  document.body.appendChild(chat);
+  $('#hcForm').addEventListener('submit', ev => { ev.preventDefault(); const t = $('#hcIn').value.trim(); if (!t) return; $('#hcIn').value = ''; hallSay(t); });
+  const lite = document.createElement('section'); lite.className = 'hall-lite'; lite.id = 'hallLite'; lite.hidden = true; lite.setAttribute('aria-label', '展品列表');
+  lite.innerHTML = `<header class="of-h"><div><div class="eyebrow" id="hlEyebrow"></div><h2 id="hlTitle"></h2><p id="hlIntro"></p></div><div class="hall-lite-act" id="hlAct"></div></header><div class="of-grid" id="hlGrid"></div><div id="hlChatSlot"></div>`;
+  document.body.appendChild(lite);
+  lite.addEventListener('click', ev => {
+    const h = ev.target.closest('[data-h]'); if (h) { hallDo(h.dataset.h); return; }
+    const b = ev.target.closest('[data-a]'); if (!b) return;
+    const id = b.closest('.oc').dataset.b;
+    if (b.dataset.a === 'play') hallPlay(id); else if (b.dataset.a === 'fb') hallFeedback(id);
+  });
+  HALL.ui = true;
+  hallChatRender();
+}
+
+/* ---------- 谁在场 ---------- */
+// 除了我以外在场的人：别人最近 45 秒内写过位置的，加上演示访客
+function hallPeople() {
+  const out = [], now = Date.now(), me = CLOUD.ready ? CLOUD.me.id : '';
+  HALL.pres.forEach((p, uid) => {
+    if (!p || p.ev !== HALL.ev.id || uid === me || now - (+p.at || 0) > 45000) return;
+    out.push({ id: uid, name: String(p.n || '').slice(0, 12) || '访客', x: clamp(+p.x || 0, -4.6, 4.6), z: clamp(+p.z || 0, -3.6, 3.6), booth: typeof p.b === 'string' ? p.b.slice(0, 80) : '', list: !!p.l });
+  });
+  if (HALL.bots) HALL.botList.forEach(b => out.push({ id: b.id, name: b.name, x: b.x, z: b.z, booth: b.booth, demo: true, bot: b }));
+  return out;
+}
+function hallPlayingAt(bid) { return hallPeople().filter(p => p.booth === bid).length + (HALL.playing === bid ? 1 : 0); }
+function hallLiveIid(iid) { const bid = HALL.iid2b[iid]; return !!bid && HALL.cnt && HALL.cnt[bid] > 0; }
+function hallColor(id) { return '#' + new THREE.Color().setHSL((hash(String(id)) % 360) / 360, .6, .64).getHexString(); }
+function hallBoothTitle(bid) { const b = bid && hallBooth(bid); return b ? b.title : ''; }
+
+/* 演示访客：在展位之间走动，站一会儿再换下一个 */
+function hallBotsStep() {
+  if (!HALL.bots) return;
+  if (!HALL.botList.length) HALL_BOTS.forEach(([id, name], i) => { const x = -2.2 + i * 1.1, z = -.9 + (i % 2) * 1.1; HALL.botList.push({ id, name, x, z, tx: x, tz: z, booth: '', goal: '', walking: false, until: Date.now() + 400 + i * 1700 }); });
+  const now = Date.now(), ids = Object.keys(HALL.stand);
+  HALL.botList.forEach((b, i) => {
+    if (b.walking) {                                 // 走到了才算“在玩”，然后站一会儿
+      if (!HALL.three) { b.x = b.tx; b.z = b.tz; }
+      if (Math.hypot(b.tx - b.x, b.tz - b.z) > .2) return;
+      b.walking = false; b.booth = b.goal; b.until = now + 7000 + Math.random() * 14000;
+      return;
+    }
+    if (now < b.until) return;
+    b.booth = ''; b.walking = true;
+    if (ids.length && Math.random() < .82) {
+      b.goal = ids[Math.floor(Math.random() * ids.length)];
+      const s = HALL.stand[b.goal], k = (i - 2) * .32;
+      b.tx = clamp(s.x + (s.side ? 0 : k), -4.5, 4.5); b.tz = clamp(s.z + (s.side ? k : 0), -3.5, 3.5);
+    } else { b.goal = ''; b.tx = -2.4 + Math.random() * 4.8; b.tz = .6 + Math.random() * 2.4; }
+  });
+  // 偶尔有一位在聊天里说一句
+  if (now > (HALL.botSayAt || 0)) {
+    HALL.botSayAt = now + 22000 + Math.random() * 26000;
+    const at = HALL.botList.filter(b => b.booth);
+    if (at.length && HALL.botSayAt0) { const b = at[Math.floor(Math.random() * at.length)], t = hallBoothTitle(b.booth); if (t) { HALL.botChat.push({ id: 'd' + now, uid: b.id, name: b.name, t: HALL_BOT_LINES[Math.floor(Math.random() * HALL_BOT_LINES.length)].replace('{t}', t), at: now, demo: true }); HALL.botChat = HALL.botChat.slice(-12); hallChatRender(); } }
+    HALL.botSayAt0 = true;
+  }
+}
+
+/* 3D 里的人偶和头顶的名字 */
+function hallAvatars(people) {
+  if (!HALL.three) return;
+  const seen = new Set();
+  people.forEach(p => {
+    if (p.list) return;                              // 在列表页里逛的人没有位置
+    seen.add(p.id);
+    let a = HALL.av.get(p.id);
+    if (!a) {
+      const g = new THREE.Group(), col = hallColor(p.id);
+      mesh(CY(.15, .24, .96, 16), M(col, .75), 0, .48, 0, g);
+      mesh(SPH(.19), M(col, .6), 0, 1.2, 0, g);
+      [-.07, .07].forEach(ex => mesh(SPH(.028, 8, 6), M('#14161c', .4), ex, 1.23, .165, g));   // 眼睛朝着走的方向
+      g.position.set(p.x, 0, p.z); HALL.avRoot.add(g);
+      const el = document.createElement('div'); el.className = 'hall-tag'; $('#hallTags').appendChild(el);
+      a = { g, el, col, text: '' }; HALL.av.set(p.id, a);
+    }
+    a.tx = p.bot ? p.bot.tx : p.x; a.tz = p.bot ? p.bot.tz : p.z; a.bot = p.bot || null;
+    const t = hallBoothTitle(p.booth), text = p.name + '|' + (p.demo ? 1 : 0) + '|' + t;
+    if (text !== a.text) { a.text = text; a.el.innerHTML = `<i style="--c:${a.col}"></i><b>${esc(p.name)}</b>${p.demo ? '<span>演示</span>' : ''}${t ? `<span>在玩「${esc(t)}」</span>` : ''}`; }
+  });
+  HALL.av.forEach((a, id) => { if (!seen.has(id)) { HALL.avRoot.remove(a.g); a.el.remove(); HALL.av.delete(id); } });
+}
+// 每一帧：人偶走向目标位置，名字跟着走
+let hallLastF = 0;
+function hallFrame() {
+  if (!HALL.three) return;
+  const now = performance.now(), dt = Math.min(.05, (now - (hallLastF || now)) / 1000); hallLastF = now;
+  const hide = S.busy || S.view !== 'room' || !$('#hallLite').hidden || (S.win && S.win.size === 'wide');
+  HALL.av.forEach(a => {
+    const p = a.g.position, dx = a.tx - p.x, dz = a.tz - p.z, d = Math.hypot(dx, dz);
+    if (d > .03) {
+      const step = Math.min(d, (a.bot ? 1.15 : Math.max(1.4, d * 2.2)) * dt);
+      p.x += dx / d * step; p.z += dz / d * step; p.y = Math.abs(Math.sin(now / 130)) * .035;
+      a.g.rotation.y = Math.atan2(dx, dz);
+      if (a.bot) { a.bot.x = p.x; a.bot.z = p.z; }
+    } else { p.y = 0; if (a.bot && a.bot.goal && a.faced !== a.bot.goal) { a.faced = a.bot.goal; const s = HALL_SLOTS.find(q => Math.hypot(q.x - p.x, q.z - p.z) < 2.2); if (s) a.g.rotation.y = Math.atan2(s.x - p.x, s.z - p.z); } }
+    _v.set(p.x, 1.62, p.z);
+    const s = toScreen(_v), off = hide || s.z > 1 || s.x < -60 || s.x > innerWidth + 60;
+    a.el.style.transform = `translate(${s.x.toFixed(1)}px,${s.y.toFixed(1)}px) translate(-50%,-100%)`;
+    a.el.style.opacity = off ? '0' : clamp(5.5 / camera.position.distanceTo(_v), .55, 1).toFixed(2);
+  });
+}
+// 把我的位置告诉别人：动了才写，最快 4 秒一次；不动时 20 秒报一次平安
+function hallPresence() {
+  if (!hallShared()) return;
+  const now = Date.now(), last0 = HALL.pres0, inList = !HALL.three || !$('#hallLite').hidden;
+  const x = HALL.three ? +FP.pos.x.toFixed(2) : 0, z = HALL.three ? +FP.pos.z.toFixed(2) : 3;
+  const moved = Math.hypot(x - last0.x, z - last0.z) > .5 || last0.b !== HALL.playing || last0.n !== HALL.me.name;
+  if (!(moved && now - last0.at > 4000) && now - last0.at < 20000) return;
+  HALL.pres0 = { x, z, b: HALL.playing, n: HALL.me.name, at: now };
+  try { DATA.set(`hallp/${CLOUD.me.id}`, { ev: HALL.ev.id, n: HALL.me.name || '访客', x, z, b: HALL.playing, l: inList ? 1 : 0, at: now }).catch(() => {}); } catch (e) {}
+}
+// 每秒一次：演示访客做决定、同步人偶、上报位置、刷新数字和展位上的小字
+function hallTick() {
+  if (!HALL.ui) return;
+  hallBotsStep();
+  const people = hallPeople();
+  HALL.n = people.length; HALL.cnt = {};
+  people.forEach(p => { if (p.booth) HALL.cnt[p.booth] = (HALL.cnt[p.booth] || 0) + 1; });
+  if (HALL.playing) HALL.cnt[HALL.playing] = (HALL.cnt[HALL.playing] || 0) + 1;
+  hallAvatars(people); hallPresence(); hallChrome();
+  S.hotspots.forEach(h => {
+    const bid = HALL.iid2b[h.iid]; if (!bid) return;
+    const sp = h.el.firstChild, n = HALL.cnt[bid] || 0, base = h.el.dataset.t || (h.el.dataset.t = sp.textContent);
+    const txt = base + (n ? ` · ${n} 人在玩` : '') + (HALL.me.fb[bid] ? ' · 已评' : '');
+    if (sp.textContent !== txt) sp.textContent = txt;
+  });
+  if (!$('#hallLite').hidden && ++HALL.liteT % 4 === 0 && !/INPUT|TEXTAREA/.test(document.activeElement && document.activeElement.tagName)) hallLiteRender();
+}
+function hallOnPlay(w) { const bid = w.e && w.e.hid; if (!bid) return; HALL.playing = bid; HALL.playT = Date.now(); HALL.pres0.at -= 4000; }
+function hallOnStop(w) {
+  const bid = w.e && w.e.hid; if (!bid || bid !== HALL.playing) return;
+  const b = hallBooth(bid), long = Date.now() - HALL.playT > 6000;
+  HALL.playing = '';
+  if (long && b && !b.mine && !HALL.me.fb[bid]) HALL.pendingFb = bid;
+  hallChrome();
+  if (HALL.dirty) setTimeout(() => hallRebuild(), 50);
+}
+
+/* ---------- 全场聊天 ---------- */
+function hallChatAll() {
+  const out = HALL.botChat.filter(() => HALL.bots).slice();
+  const me = CLOUD.ready ? CLOUD.me.id : '';
+  HALL.clean.forEach((c, uid) => { if (uid === me) return; c.chat.forEach(m => out.push({ id: uid + m.id, uid, name: c.name || '访客', t: m.t, at: m.at })); });
+  if (HALL.me) HALL.me.chat.forEach(m => out.push({ id: 'me' + m.id, uid: hallUid(), name: HALL.me.name || '我', t: m.t, at: m.at, mine: true }));
+  return out.sort((a, b) => a.at - b.at).slice(-40);
+}
+function hallChatRender() {
+  const log = $('#hcLog'); if (!log) return;
+  const list = hallChatAll(), stick = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+  log.innerHTML = list.length ? list.map(m => `<p><b style="--c:${hallColor(m.uid)}">${esc(m.name)}${m.demo ? '（演示）' : ''}</b>${esc(m.t)}</p>`).join('') : '<p class="sys">还没有人说话。看到喜欢的作品，在这里喊一声。</p>';
+  if (stick) log.scrollTop = log.scrollHeight;
+}
+function hallSay(t) {
+  HALL.me.chat = HALL.me.chat.concat({ id: Date.now().toString(36), t: t.slice(0, 80), at: Date.now() }).slice(-20);
+  hallSave(); hallChatRender();
+  $('#hcLog').scrollTop = $('#hcLog').scrollHeight;
+  if (!hallShared() && !HALL.saidLocal) { HALL.saidLocal = true; toast(CLOUD.ready ? '你现在是查看者，这句话只有你自己看得到' : '单机预览：这句话只有你自己看得到', 3600); }
+}
+
+/* ---------- 反馈 ---------- */
+function hallGiven() { const mine = hallMyBoothId(); return HALL.me ? Object.keys(HALL.me.fb).filter(k => k !== mine).length : 0; }
+function hallReceived(bid) {
+  const out = (HALL_SEED[bid] || []).map((f, i) => Object.assign({ demo: true, at: i }, f));
+  const me = CLOUD.ready ? CLOUD.me.id : '';
+  HALL.clean.forEach((c, uid) => { if (uid !== me && c.fb[bid]) out.push(Object.assign({ by: c.name || '一位访客' }, c.fb[bid])); });
+  return out.sort((a, b) => a.at - b.at);
+}
+function hallFeedback(bid) {
+  const b = hallBooth(bid); if (!b) return;
+  if (b.mine) { hallMine(); return; }
+  const g = HALL.three && S.view === 'room' ? findGroup(hallIid(bid)) : null, cur = HALL.me.fb[bid] || {};
+  beginPanel('hallfb', g);
+  const tags = new Set(cur.tags || []);
+  setPanel(`写反馈 · 作者 ${b.by}`, b.title, `
+    <p class="mute small u-mb4">只显示给作者。具体的一句话比打分有用：哪一刻觉得好玩，哪里卡住了。</p>
+    <form id="hfForm">
+      <div class="field"><label for="hfLike">最打动你的一点</label><textarea class="input" id="hfLike" maxlength="160" rows="3" placeholder="比如：第三关突然变速的那一下，我笑出来了">${esc(cur.like || '')}</textarea></div>
+      <div class="field"><label for="hfTip">一个具体的建议</label><textarea class="input" id="hfTip" maxlength="160" rows="3" placeholder="比如：失败之后想直接重开，现在要点两次">${esc(cur.tip || '')}</textarea></div>
+      <div class="field"><label>顺手标几个（可以不选）</label><div class="seg" id="hfTags">${HALL_TAGS.map(t => `<button type="button" data-v="${t}" aria-pressed="${tags.has(t)}">${t}</button>`).join('')}</div></div>
+      <span class="err" id="hfErr" hidden></span>
+    </form>
+    ${b.demo ? '<p class="mute small">这是演示展位，没有真实的作者：反馈只计入你的进度。</p>' : ''}`,
+    `<button type="submit" form="hfForm" class="btn primary">${cur.at ? '更新反馈' : '交给作者'}</button>`);
+  $('#hfTags').addEventListener('click', ev => { const x = ev.target.closest('button'); if (!x) return; const v = x.dataset.v; if (tags.has(v)) tags.delete(v); else tags.add(v); x.setAttribute('aria-pressed', tags.has(v)); });
+  $('#hfForm').addEventListener('submit', ev => {
+    ev.preventDefault();
+    const like = $('#hfLike').value.trim(), tip = $('#hfTip').value.trim(), err = $('#hfErr');
+    if ((like + tip).length < 10) { err.textContent = '再写具体一点：两项加起来至少 10 个字。'; err.hidden = false; return; }
+    const before = hallGiven();
+    HALL.me.fb[bid] = { like: like.slice(0, 160), tip: tip.slice(0, 160), tags: [...tags], at: Date.now() };
+    if (HALL.pendingFb === bid) HALL.pendingFb = '';
+    hallSave(); closePanel(); hallTick(); hallLiteRender();
+    const n = hallGiven(), has = !!HALL.me.booth;
+    toast(has && n < HALL_NEED ? `已评 ${n}/${HALL_NEED}，再评 ${HALL_NEED - n} 件就能看自己收到的反馈`
+      : has && before < HALL_NEED && n >= HALL_NEED ? `评满 ${HALL_NEED} 件了，点“我的反馈”看看别人怎么说你的作品`
+        : b.demo ? `已记下，进度 ${Math.min(n, HALL_NEED)}/${HALL_NEED}（演示展位没有真实作者）` : `反馈已交给 ${b.by}`, 4200);
+  });
+}
+function hallFbHTML(list) {
+  return `<ul class="ib-list">${list.map(f => `<li class="ib-item"><b>${esc(f.by)}${f.demo ? ' <span class="tag dim">演示</span>' : ''}</b>${f.like ? `<p>打动 TA 的：${esc(f.like)}</p>` : ''}${f.tip ? `<p>建议：${esc(f.tip)}</p>` : ''}${(f.tags || []).length ? `<small>${f.tags.map(esc).join(' · ')}</small>` : ''}</li>`).join('')}</ul>`;
+}
+function hallMine() {
+  beginPanel('hallmine', null);
+  const given = hallGiven(), mineId = hallMyBoothId(), my = HALL.me.booth, left = Math.max(0, HALL_NEED - given);
+  const done = Object.keys(HALL.me.fb).filter(k => k !== mineId).map(k => hallBooth(k)).filter(Boolean);
+  const got = my ? hallReceived(mineId) : [];
+  let mineHtml;
+  if (!my) mineHtml = `<p class="mute u-mb3">你还没有展位。报名之后，别人玩过你的作品，留下的话会出现在这里。</p><div class="u-row"><button type="button" class="btn" id="hmSubmit">报名参展</button><button type="button" class="btn ghost" id="hmSample">看一份示例报告</button></div>`;
+  else if (left) mineHtml = `<div class="callout"><b>已经收到 ${got.length} 条</b>再评 ${left} 件别人的作品就能打开。大家都先看别人的，每件作品才都有人看。</div>`;
+  else if (!got.length) mineHtml = `<p class="mute">「${esc(my.title)}」还没有收到反馈。${hallShared() ? '在聊天里喊一声，请大家来玩。' : '现在是单机预览，别人看不到你的展位。'}</p>`;
+  else mineHtml = hallFbHTML(got) + `<button type="button" class="btn u-mt3" id="hmReport">整理成反馈报告</button>`;
+  setPanel('我的反馈', `已评 ${Math.min(given, HALL_NEED)}/${HALL_NEED}`, `
+    <div class="section-t">我写给别人的</div>
+    ${done.length ? `<ul class="works">${done.map(b => `<li><span>${esc(b.title)}</span><span class="mute small">${esc(b.by)}</span></li>`).join('')}</ul>` : '<p class="mute">还没有。玩过一件作品之后，在窗口右上角点“写反馈”。</p>'}
+    <div class="divider"></div>
+    <div class="section-t">我的展位收到的</div>${mineHtml}`, '');
+  const on = (id, fn) => { const el = $('#' + id); if (el) el.addEventListener('click', fn); };
+  on('hmSubmit', () => hallSubmit()); on('hmSample', () => hallReport('s1')); on('hmReport', () => hallReport(mineId));
+}
+function hallReportLocal(b, list) {
+  const tally = {}; list.forEach(f => (f.tags || []).forEach(t => { tally[t] = (tally[t] || 0) + 1; }));
+  const tg = Object.keys(tally).sort((a, c) => tally[c] - tally[a]).map(t => `${t} ×${tally[t]}`).join(' · ');
+  return `共 ${list.length} 条反馈${tg ? '\n标签：' + tg : ''}\n\n大家提到的亮点\n${list.filter(f => f.like).map(f => '· ' + f.like).join('\n') || '· 还没有'}\n\n大家给的建议\n${list.filter(f => f.tip).map(f => '· ' + f.tip).join('\n') || '· 还没有'}\n\n（按原话排列，没有经过 AI 总结）`;
+}
+async function hallReport(bid) {
+  const b = hallBooth(bid); if (!b) return;
+  const list = hallReceived(bid);
+  beginPanel('hallrep', null);
+  setPanel('反馈报告' + (b.demo ? ' · 演示数据' : ''), b.title, `<div class="hall-report" id="hrBody">正在整理 ${list.length} 条反馈……</div>`, '<button type="button" class="btn" id="hrBack">回到我的反馈</button>');
+  $('#hrBack').addEventListener('click', () => hallMine());
+  let text = hallReportLocal(b, list);
+  if (S.sample && list.length >= 2) {
+    const prompt = `你在帮一位独立开发者读懂一场线上展示活动里收到的玩家反馈。作品叫「${b.title}」，介绍是：${b.desc || '无'}。下面是全部反馈，每条包含“打动”和“建议”。请用中文写一份简短的报告，分三段，每段两到三条，每条一句话：\n一、玩家喜欢什么\n二、玩家卡在哪里\n三、下一版最值得先改的事（按重要程度排）\n只根据反馈里写到的内容，不要补充反馈里没有的事。不要用 Markdown 符号。\n\n` + list.map((f, i) => `${i + 1}. 打动：${f.like || '无'}；建议：${f.tip || '无'}；标签：${(f.tags || []).join('、') || '无'}`).join('\n');
+    try { const r = await S.sample(prompt, { modelTier: 'quick' }); if (r && r.text && r.text.trim()) text = r.text.trim().slice(0, 1400) + `\n\n（由 AI 根据 ${list.length} 条反馈整理，原话在“我的反馈”里）`; } catch (e) {}
+  }
+  const el = $('#hrBody'); if (el && S.panel && S.panel.kind === 'hallrep') el.textContent = text;
+}
+
+/* ---------- 展品列表（手机默认看这一页，桌面上也能从数据条打开） ---------- */
+function hallFake(b) { const type = b.kind === 'game2' ? 'arcade' : 'kiosk'; return { userData: { fake: true, iid: hallIid(b.id), def: { uid: hallIid(b.id), type, name: '展位', entry: hallEntry(b) }, meta: ITEMS[type] } }; }
+function hallPlay(bid) {
+  const b = hallBooth(bid); if (!b) return;
+  const real = HALL.three && S.roomRoot ? findGroup(hallIid(bid)) : null;
+  if (real && S.view === 'room') { hallLiteClose(); activate(real); return; }
+  openWindow(hallFake(b));
+}
+function hallLiteOpen() {
+  HALL.liteT = 0; HALL.listOpen = true;
+  const el = $('#hallLite'); el.hidden = false;
+  $('#hlChatSlot').appendChild($('#hallChat'));
+  document.body.classList.add('hall-list');
+  if (FP.locked && document.exitPointerLock) document.exitPointerLock();
+  hallLiteRender(); el.scrollTop = 0;
+}
+function hallLiteClose() {
+  const el = $('#hallLite'); if (!el || el.hidden) return;
+  el.hidden = true; HALL.listOpen = false; document.body.classList.remove('hall-list');
+  document.body.appendChild($('#hallChat'));
+}
+function hallLiteRender() {
+  const el = $('#hallLite'); if (!el || el.hidden) return;
+  const ev = HALL.ev, booths = hallBooths(), my = HALL.me.booth;
+  $('#hlEyebrow').textContent = `线上展厅${ev.demo ? ' · 演示场次' : ''} · 在场 ${HALL.n + 1} 人${HALL.bots && HALL.botList.length ? '（含演示访客）' : ''}`;
+  $('#hlTitle').textContent = ev.title; $('#hlIntro').textContent = ev.intro;
+  $('#hlAct').innerHTML = `<button type="button" class="btn primary" data-h="3d">${HALL.three ? '回到 3D 展厅' : '进入 3D 展厅'}</button><button type="button" class="btn" data-h="submit">${my ? '我的展位' : '报名参展'}</button><button type="button" class="btn" data-h="mine">我的反馈 · ${Math.min(hallGiven(), HALL_NEED)}/${HALL_NEED}</button><button type="button" class="btn ghost" data-h="info">活动说明</button>`;
+  const grid = $('#hlGrid'); grid.innerHTML = '';
+  booths.forEach(b => {
+    const card = document.createElement('article'); card.className = 'oc'; card.dataset.b = b.id;
+    const cv = kioskCanvas(hallEntry(b), 384, 232); cv.className = 'oc-cover'; cv.setAttribute('role', 'img'); cv.setAttribute('aria-label', b.title); card.appendChild(cv);
+    const n = (HALL.cnt && HALL.cnt[b.id]) || 0, done = !!HALL.me.fb[b.id];
+    card.insertAdjacentHTML('beforeend', `<div class="oc-b"><div class="oc-t"><b>${esc(b.title)}</b><span class="tag ${b.kind === 'game2' ? 'pink' : ''}">${b.kind === 'game2' ? '小游戏' : '网页作品'}</span></div>
+      <p>${esc(b.desc || '作者还没写介绍')}</p>
+      <div class="oc-m"><i style="--c:${hallColor(b.owner || b.by)}"></i><span>${esc(b.by)}</span>${b.mine ? '<span class="tag">我的展位</span>' : ''}${n ? `<span class="tag ok">${n} 人在玩</span>` : ''}${done ? '<span class="tag ok">已评</span>' : ''}${b.demo ? '<span class="tag dim">演示</span>' : ''}${b.local ? '<span class="tag dim">只有你看得到</span>' : ''}</div>
+      <div class="oc-a"><button type="button" class="btn sm primary" data-a="play">试玩</button><button type="button" class="btn sm" data-a="fb">${b.mine ? '收到的反馈' : done ? '改反馈' : '写反馈'}</button></div></div>`);
+    grid.appendChild(card);
+  });
 }
 /* ============================================================
    Input
@@ -6040,6 +6794,8 @@ function animateCommon(dt) {
 }
 function frame(now) {
   if (!running) return;
+  if (HALL.on && !HALL.three) return;          // 只看展品列表时不渲染 3D
+  if (HALL.on && HALL.listOpen) { last = now; raf = requestAnimationFrame(frame); return; }   // 列表盖住画面时先不画，省电
   const dt = Math.min(.05, (now - last) / 1000); last = now; T += dt;
   if (S.view === 'globe') updateGlobe(dt, T);
   else { animateRoom(dt); updateRoomCamera(dt); if (FP.locked) crosshairPick(); }
@@ -6070,6 +6826,7 @@ function loadLand(onProgress) {
 async function boot() {
   const bar = $('#loadBar'), pct = $('#loadPct');
   const prog = v => { bar.style.transform = `scaleX(${v.toFixed(3)})`; pct.textContent = Math.round(v * 100) + '%'; };
+  if (HALL.on) return hallBoot(prog);          // 展厅模式：不加载地球，直接进展厅
   let buf;
   try {
     const fontP = Promise.race([Promise.all([`120px ${FONT.neon}`, `38px ${FONT.chalk}`, `14px ${FONT.body}`, `700 28px ${FONT.body}`, `13px ${FONT.mono}`, `40px ${FONT.disp}`].map(f => document.fonts.load(f, '拾光今天待办访客留言零点特调霓虹贪吃蛇隔壁MIDNIGHT302'))), sleep(2600)]).catch(() => {});

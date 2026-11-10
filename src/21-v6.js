@@ -265,7 +265,7 @@ $('#pocketBtn').addEventListener('click', openPocket);
 $('#cardBtn').addEventListener('click', () => { const r = S.resident; if (S.room && S.room.mine && !cardOf(r)) openCardEditor(r); else openCard(); });
 $('#cardEditBtn').addEventListener('click', () => openCardEditor(S.resident));
 $('#pendingRow').addEventListener('click', e => { const b = e.target.closest('[data-uid]'); if (b) selectItem(findGroup(b.dataset.uid)); });
-$('#plate').addEventListener('click', () => { if (S.view === 'room' && S.mode === 'visit' && !S.busy) openCard(); });
+$('#plate').addEventListener('click', () => { if (HALL.on) { hallLobby(); return; } if (S.view === 'room' && S.mode === 'visit' && !S.busy) openCard(); });
 
 
 /* deck */
